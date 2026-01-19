@@ -7,7 +7,10 @@ authors = [
     { name = "binado", email = "bernardopveronese@gmail.com" }
 ]
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "numpy",
+    "xarray",
+]
 
 [build-system]
 requires = ["uv_build>=0.9.18,<0.10.0"]

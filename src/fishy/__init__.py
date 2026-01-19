@@ -1,2 +1,3 @@
-def hello() -> str:
-    return "Hello from fishy!"
+from .fisher import Diagnostics, FisherMatrix
+
+__all__ = ["Diagnostics", "FisherMatrix"]
