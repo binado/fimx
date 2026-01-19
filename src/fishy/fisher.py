@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+from collections.abc import Hashable
 from dataclasses import dataclass
-from typing import Mapping, Sequence
+from typing import Mapping, Sequence, TypeAlias
 
 import numpy as np
 import xarray as xr
+
+
+ParameterDims: TypeAlias = tuple[Hashable, Hashable]
 
 
 @dataclass(frozen=True)
@@ -26,9 +30,11 @@ class FisherMatrix:
         labels: Sequence[str] | Mapping[str, str] | None = None,
         units: Sequence[str | None] | Mapping[str, str | None] | None = None,
         fiducials: Sequence[float | None] | Mapping[str, float | None] | None = None,
-        parameter_dims: tuple[str, str] = ("parameter", "parameter2"),
-        batch_dim: str = "batch",
+        parameter_dims: ParameterDims = ("parameter", "parameter2"),
+        batch_dim: Hashable = "batch",
     ) -> None:
+        self._parameter_dims: ParameterDims
+        self._batch_dim: Hashable | None
         self._cache: dict[str, xr.DataArray] = {}
         if isinstance(data, xr.DataArray):
             da = data
@@ -72,7 +78,7 @@ class FisherMatrix:
         return self.parameters
 
     @property
-    def parameter_dims(self) -> tuple[str, str]:
+    def parameter_dims(self) -> ParameterDims:
         return self._parameter_dims
 
     @property
@@ -121,13 +127,15 @@ class FisherMatrix:
 
     def marginalized_errors(self, method: str = "cholesky") -> xr.DataArray:
         cov = self.covariance(method=method)
-        diag = np.diagonal(cov.values, axis=-2, axis2=-1)
+        values = np.asarray(cov.values)
+        diag = np.diagonal(values, axis1=-2, axis2=-1)
         errors = np.sqrt(diag)
         return self._vector_dataarray(errors, self.parameters)
 
     def correlation(self, method: str = "cholesky") -> xr.DataArray:
         cov = self.covariance(method=method)
-        diag = np.diagonal(cov.values, axis=-2, axis2=-1)
+        values = np.asarray(cov.values)
+        diag = np.diagonal(values, axis1=-2, axis2=-1)
         denom = np.sqrt(diag[..., :, None] * diag[..., None, :])
         with np.errstate(divide="ignore", invalid="ignore"):
             corr = cov.values / denom
@@ -234,6 +242,8 @@ class FisherMatrix:
             prior = self._diagonal_prior(diagonal)
         else:
             prior = fisher.data if isinstance(fisher, FisherMatrix) else fisher
+        if prior is None:
+            raise ValueError("Prior DataArray is required.")
         return self._add_dataarrays(self._data, prior)
 
     def __add__(self, other: "FisherMatrix") -> "FisherMatrix":
@@ -343,8 +353,8 @@ class FisherMatrix:
         cls,
         path: str,
         *,
-        parameter_dims: tuple[str, str] | None = None,
-        batch_dim: str = "batch",
+        parameter_dims: ParameterDims | None = None,
+        batch_dim: Hashable = "batch",
     ) -> "FisherMatrix":
         if path.endswith(".zarr"):
             da = xr.open_zarr(path)
@@ -354,6 +364,7 @@ class FisherMatrix:
             if da.ndim < 2:
                 raise ValueError("DataArray must be at least 2D.")
             parameter_dims = (da.dims[-2], da.dims[-1])
+        assert parameter_dims is not None
         return cls(da, parameter_dims=parameter_dims, batch_dim=batch_dim)
 
     def _split_parameters(self, selected: Sequence[str]) -> tuple[list[str], list[str]]:
@@ -518,8 +529,8 @@ class FisherMatrix:
         self,
         array: np.ndarray,
         parameters: list[str],
-        parameter_dims: tuple[str, str],
-        batch_dim: str,
+        parameter_dims: ParameterDims,
+        batch_dim: Hashable,
     ) -> xr.DataArray:
         if array.ndim not in (2, 3):
             raise ValueError("Data must be 2D or 3D with a single batch dimension.")
