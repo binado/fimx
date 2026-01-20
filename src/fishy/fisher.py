@@ -74,10 +74,6 @@ class FisherMatrix:
         return list(self._data.coords[self._parameter_dims[0]].values.tolist())
 
     @property
-    def parameter_names(self) -> list[str]:
-        return self.parameters
-
-    @property
     def parameter_dims(self) -> ParameterDims:
         return self._parameter_dims
 
