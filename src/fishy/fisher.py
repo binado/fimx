@@ -66,7 +66,7 @@ class FisherMatrix:
                 parameter_dims = (da.dims[-2], da.dims[-1])
 
             da = stack_batches(da, parameter_dims=parameter_dims, batch_dim=batch_dim)
-            self._batch_dim = batch_dim if da.ndim == 3 else None
+            self._batch_dim = batch_dim if da.ndim > 2 else None
             self._dims = DatasetDims(
                 parameter_i=parameter_dims[0],
                 parameter_j=parameter_dims[1],
@@ -76,21 +76,21 @@ class FisherMatrix:
                 parameters = self._extract_parameters_from_da(da)
             da = self._ensure_parameter_coords(da, list(parameters))
         else:
-            self._batch_dim = batch_dim
             if parameters is None:
                 raise ValueError(
                     "parameters are required when data is not an xarray DataArray."
                 )
-            self._dims = DatasetDims(
-                parameter_i=parameter_dims[0],
-                parameter_j=parameter_dims[1],
-                batch=batch_dim,
-            )
             da = build_dataarray_from_array(
                 np.asarray(data),
                 list(parameters),
                 parameter_dims=parameter_dims,
                 batch_dim=batch_dim,
+            )
+            self._batch_dim = batch_dim if da.ndim > 2 else None
+            self._dims = DatasetDims(
+                parameter_i=parameter_dims[0],
+                parameter_j=parameter_dims[1],
+                batch=batch_dim,
             )
 
         self._data = da
