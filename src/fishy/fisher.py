@@ -302,10 +302,14 @@ class FisherMatrix:
             raise ValueError("Parameter dims must match to add Fisher matrices.")
         return self._add_dataarrays(self._data, other.data)
 
-    def figure_of_merit(self, parameters: Sequence[str]) -> xr.DataArray:
-        names = self._normalize_parameter_list(parameters)
-        sub = self.fix([p for p in self.parameters if p not in names])
-        cov = sub.covariance()
+    def figure_of_merit(self, parameters: Sequence[str] | None = None) -> xr.DataArray:
+        if parameters is None:
+            # Optimization: compute directly on full Fisher matrix
+            cov = self.covariance()
+        else:
+            names = self._normalize_parameter_list(parameters)
+            sub = self.fix([p for p in self.parameters if p not in names])
+            cov = sub.covariance()
         det = np.linalg.det(cov.values)
         fom = 1.0 / np.sqrt(det)
         return self._scalar_dataarray(fom)
