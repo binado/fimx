@@ -4,6 +4,7 @@ from collections.abc import Hashable, Mapping, Sequence
 
 import numpy as np
 import xarray as xr
+from numpy.typing import ArrayLike
 
 from .array_ops import (
     build_dataarray_from_array,
@@ -20,65 +21,99 @@ from .diagnostics import (
 )
 from .dimensions import DatasetDims, ParameterDims
 from .inversion import invert_matrices
-from .metadata import normalize_metadata
+from .metadata import normalize_metadata_array
 from .sampling import sample_from_fisher
 
 DEFAULT_DIMS = DatasetDims()
+
+FISHER_VAR = "fisher_matrix"
+COVARIANCE_VAR = "covariance"
+FIDUCIALS_VAR = "fiducials"
+UNITS_VAR = "units"
+LABELS_VAR = "labels"
+
+
+def _is_missing(value: object) -> bool:
+    if value is None:
+        return True
+    if isinstance(value, (float, np.floating)) and np.isnan(value):
+        return True
+    return False
 
 
 class FisherMatrix:
     def __init__(
         self,
-        data: np.ndarray | xr.DataArray,
-        *,
+        data: np.ndarray | xr.DataArray | xr.Dataset,
         parameters: Sequence[str] | None = None,
+        *,
         labels: Sequence[str] | Mapping[str, str] | None = None,
         units: Sequence[str | None] | Mapping[str, str | None] | None = None,
-        fiducials: Sequence[float | None] | Mapping[str, float | None] | None = None,
+        fiducials: Sequence[float | None]
+        | Mapping[str, float | None]
+        | ArrayLike
+        | None = None,
         parameter_dims: ParameterDims | None = None,
         batch_dim: Hashable | None = None,
         dims: DatasetDims | None = None,
     ) -> None:
-        self._batch_dim: Hashable | None
-        self._dims: DatasetDims
-        # Cache uses tuple keys for type safety and flexibility
-        self._cache: dict[tuple, xr.DataArray] = {}
+        self._cache: xr.Dataset = xr.Dataset()
         explicit_parameter_dims = parameter_dims is not None or dims is not None
+
         if dims is not None:
             if parameter_dims is not None or batch_dim is not None:
                 raise ValueError("Use dims or parameter_dims/batch_dim, not both.")
-            parameter_dims = dims.parameter_dims
+            parameter_dims = dims.matrix_dims
+            parameter_dim = dims.parameter
             batch_dim = dims.batch
+        else:
+            parameter_dim = DEFAULT_DIMS.parameter
 
         if parameter_dims is None:
             parameter_dims = DEFAULT_DIMS.parameter_dims
         if batch_dim is None:
             batch_dim = DEFAULT_DIMS.batch
 
-        if isinstance(data, xr.DataArray):
-            da = data
+        if isinstance(data, xr.Dataset):
+            ds = data.copy()
+            if FISHER_VAR not in ds:
+                raise ValueError("Dataset must contain a fisher_matrix variable.")
+            da = ds[FISHER_VAR]
             if da.ndim < 2:
-                raise ValueError("DataArray must be at least 2D.")
+                raise ValueError("Fisher matrix must be at least 2D.")
             if explicit_parameter_dims:
                 if not all(dim in da.dims for dim in parameter_dims):
-                    raise ValueError("Parameter dims are missing from DataArray.")
+                    raise ValueError("Row/col dims are missing from fisher_matrix.")
             else:
                 parameter_dims = (da.dims[-2], da.dims[-1])
 
             da = stack_batches(da, parameter_dims=parameter_dims, batch_dim=batch_dim)
-            self._batch_dim = batch_dim if da.ndim > 2 else None
-            self._dims = DatasetDims(
-                parameter_i=parameter_dims[0],
-                parameter_j=parameter_dims[1],
-                batch=batch_dim,
-            )
             if parameters is None:
-                parameters = self._extract_parameters_from_da(da)
-            da = self._ensure_parameter_coords(da, list(parameters))
+                parameters = self._extract_parameters_from_da(da, parameter_dims)
+            da = self._ensure_parameter_coords(da, list(parameters), parameter_dims)
+            ds[FISHER_VAR] = da
+            ds = ds.assign_coords({parameter_dim: list(parameters)})
+            self._dataset = ds
+        elif isinstance(data, xr.DataArray):
+            da = data
+            if da.ndim < 2:
+                raise ValueError("Fisher matrix must be at least 2D.")
+            if explicit_parameter_dims:
+                if not all(dim in da.dims for dim in parameter_dims):
+                    raise ValueError("Row/col dims are missing from DataArray.")
+            else:
+                parameter_dims = (da.dims[-2], da.dims[-1])
+
+            da = stack_batches(da, parameter_dims=parameter_dims, batch_dim=batch_dim)
+            if parameters is None:
+                parameters = self._extract_parameters_from_da(da, parameter_dims)
+            da = self._ensure_parameter_coords(da, list(parameters), parameter_dims)
+            ds = xr.Dataset({FISHER_VAR: da}, coords={parameter_dim: list(parameters)})
+            self._dataset = ds
         else:
             if parameters is None:
                 raise ValueError(
-                    "parameters are required when data is not an xarray DataArray."
+                    "parameters are required when data is not an xarray object."
                 )
             da = build_dataarray_from_array(
                 np.asarray(data),
@@ -86,24 +121,29 @@ class FisherMatrix:
                 parameter_dims=parameter_dims,
                 batch_dim=batch_dim,
             )
-            self._batch_dim = batch_dim if da.ndim > 2 else None
-            self._dims = DatasetDims(
-                parameter_i=parameter_dims[0],
-                parameter_j=parameter_dims[1],
-                batch=batch_dim,
-            )
+            ds = xr.Dataset({FISHER_VAR: da}, coords={parameter_dim: list(parameters)})
+            self._dataset = ds
 
-        self._data = da
+        self._batch_dim = batch_dim if self._dataset[FISHER_VAR].ndim > 2 else None
+        self._dims = DatasetDims(
+            row=parameter_dims[0],
+            col=parameter_dims[1],
+            parameter=parameter_dim,
+            batch=batch_dim,
+        )
         self._sync_metadata(labels=labels, units=units, fiducials=fiducials)
 
     @property
     def data(self) -> xr.DataArray:
-        return self._data
+        return self._dataset[FISHER_VAR]
+
+    @property
+    def dataset(self) -> xr.Dataset:
+        return self._dataset
 
     @property
     def parameters(self) -> list[str]:
-        # .values returns numpy array, .tolist() converts to Python list
-        return self._data.coords[self._dims.parameter_i].values.tolist()
+        return self._dataset[FISHER_VAR].coords[self._dims.row].values.tolist()
 
     @property
     def parameter_dims(self) -> ParameterDims:
@@ -115,47 +155,74 @@ class FisherMatrix:
 
     @property
     def labels(self) -> dict[str, str]:
-        return self._get_attr_map("labels", default_factory=lambda name: name)
+        return self._get_metadata_map(LABELS_VAR, default_factory=lambda name: name)
 
     @labels.setter
     def labels(self, value: Sequence[str] | Mapping[str, str] | None) -> None:
-        self._set_attr_map("labels", value, default_factory=lambda name: name)
+        self._set_metadata_var(LABELS_VAR, value, dtype=np.dtype(object))
 
     @property
     def units(self) -> dict[str, str | None]:
-        return self._get_attr_map("units", default_value=None)
+        return self._get_metadata_map(UNITS_VAR, default_value=None)
 
     @units.setter
     def units(
         self, value: Sequence[str | None] | Mapping[str, str | None] | None
     ) -> None:
-        self._set_attr_map("units", value, default_value=None)
+        self._set_metadata_var(UNITS_VAR, value, dtype=np.dtype(object))
 
     @property
     def fiducials(self) -> dict[str, float | None]:
-        return self._get_attr_map("fiducials", default_value=None)
+        return self._get_metadata_map(FIDUCIALS_VAR, default_value=None)
 
     @fiducials.setter
     def fiducials(
-        self, value: Sequence[float | None] | Mapping[str, float | None] | None
+        self,
+        value: Sequence[float | None] | Mapping[str, float | None] | ArrayLike | None,
     ) -> None:
-        self._set_attr_map("fiducials", value, default_value=None)
+        self._set_metadata_var(FIDUCIALS_VAR, value, dtype=np.dtype(float))
 
     def clear_cache(self) -> None:
-        self._cache.clear()
+        self._cache = xr.Dataset()
+
+    def to_dataset(self, *, include_cache: bool = False) -> xr.Dataset:
+        """Return the underlying dataset.
+
+        Parameters
+        ----------
+        include_cache : bool
+            If True, merge cached variables into the returned dataset
+
+        Returns
+        -------
+        xr.Dataset
+            Copy of the underlying dataset, optionally with cached data
+        """
+        if not include_cache or not self._cache.data_vars:
+            return self._dataset.copy()
+        return xr.merge([self._dataset, self._cache], compat="no_conflicts")
 
     def covariance(
-        self, method: str = "cholesky", *, rcond: float | None = None
+        self,
+        method: str = "cholesky",
+        *,
+        rcond: float | None = None,
+        cache: bool = True,
     ) -> xr.DataArray:
-        # Use tuple for cache key to avoid string formatting issues
-        cache_key = ("covariance", method, rcond)
-        cached = self._cache.get(cache_key)
+        cached = self._cache.get(COVARIANCE_VAR)
         if cached is not None:
-            return cached
+            if (
+                cached.attrs.get("method") == method
+                and cached.attrs.get("rcond") == rcond
+            ):
+                return cached
 
-        inv = invert_matrices(self._data.values, method=method, rcond=rcond)
+        inv = invert_matrices(self.data.values, method=method, rcond=rcond)
         cov = self._matrix_dataarray(inv, self.parameters)
-        self._cache[cache_key] = cov
+        cov.attrs["method"] = method
+        cov.attrs["rcond"] = rcond
+        if cache:
+            self._cache[COVARIANCE_VAR] = cov
         return cov
 
     def marginalized_errors(self, method: str = "cholesky") -> xr.DataArray:
@@ -173,17 +240,13 @@ class FisherMatrix:
         with np.errstate(divide="ignore", invalid="ignore"):
             corr = cov.values / denom
 
-        # Set diagonal to 1.0 only where variance is non-zero (finite correlation)
-        # Use numpy's fill_diagonal for 2D, or explicit indexing for batched
         n_params = corr.shape[-1]
 
         if corr.ndim == 2:
-            # Simple case: use diagonal indexing
             diag_idx = np.arange(n_params)
             mask = np.isfinite(corr[diag_idx, diag_idx])
             corr[diag_idx[mask], diag_idx[mask]] = 1.0
         else:
-            # Batched case: set diagonals for each batch where finite
             for batch_idx in range(corr.shape[0]):
                 diag_idx = np.arange(n_params)
                 mask = np.isfinite(corr[batch_idx, diag_idx, diag_idx])
@@ -192,7 +255,7 @@ class FisherMatrix:
         return self._matrix_dataarray(corr, self.parameters)
 
     def condition_number(self, method: str = "svd") -> xr.DataArray:
-        values = condition_numbers(self._data.values, method=method)
+        values = condition_numbers(self.data.values, method=method)
         return self._scalar_dataarray(values)
 
     def is_degenerate(
@@ -201,22 +264,21 @@ class FisherMatrix:
         min_eigenvalue: float | None = None,
         condition_number: float | None = None,
     ) -> xr.DataArray:
-        # Check that exactly one parameter is provided
         n_provided = sum([min_eigenvalue is not None, condition_number is not None])
         if n_provided != 1:
             raise ValueError(
                 "Specify exactly one of min_eigenvalue or condition_number."
             )
         if min_eigenvalue is not None:
-            min_vals = min_eigenvalues(self._data.values)
+            min_vals = min_eigenvalues(self.data.values)
             return self._scalar_dataarray(min_vals <= min_eigenvalue)
-        cond = condition_numbers(self._data.values, method="svd")
+        cond = condition_numbers(self.data.values, method="svd")
         return self._scalar_dataarray(cond >= condition_number)
 
     def diagnostics(
         self, method: str = "svd", threshold: float | None = None
     ) -> Diagnostics:
-        min_vals, max_vals = min_max_eigenvalues(self._data.values, method=method)
+        min_vals, max_vals = min_max_eigenvalues(self.data.values, method=method)
         cond = max_vals / min_vals
         if threshold is None:
             is_deg = np.zeros_like(min_vals, dtype=bool)
@@ -241,14 +303,12 @@ class FisherMatrix:
         if not keep:
             raise ValueError("Cannot marginalize all parameters.")
 
-        # Use xarray's coordinate-based selection
-        param_i, param_j = self._dims.parameter_i, self._dims.parameter_j
-        f_kk = self._data.sel({param_i: keep, param_j: keep})
-        f_kd = self._data.sel({param_i: keep, param_j: drop})
-        f_dd = self._data.sel({param_i: drop, param_j: drop})
-        f_dk = self._data.sel({param_i: drop, param_j: keep})
+        row_dim, col_dim = self._dims.row, self._dims.col
+        f_kk = self.data.sel({row_dim: keep, col_dim: keep})
+        f_kd = self.data.sel({row_dim: keep, col_dim: drop})
+        f_dd = self.data.sel({row_dim: drop, col_dim: drop})
+        f_dk = self.data.sel({row_dim: drop, col_dim: keep})
 
-        # Compute Schur complement: F_kk - F_kd @ F_dd^-1 @ F_dk
         inv_dd = invert_matrices(f_dd.values, method=method)
         reduced = f_kk.values - f_kd.values @ inv_dd @ f_dk.values
         return self._new_from_values(reduced, keep)
@@ -261,9 +321,8 @@ class FisherMatrix:
         if not keep:
             raise ValueError("Cannot fix all parameters.")
 
-        # Use xarray's coordinate-based selection
-        param_i, param_j = self._dims.parameter_i, self._dims.parameter_j
-        reduced_da = self._data.sel({param_i: keep, param_j: keep})
+        row_dim, col_dim = self._dims.row, self._dims.col
+        reduced_da = self.data.sel({row_dim: keep, col_dim: keep})
         return self._new_from_values(reduced_da.values, keep)
 
     def transform(
@@ -273,7 +332,7 @@ class FisherMatrix:
         new_parameters: Sequence[str] | None = None,
     ) -> "FisherMatrix":
         jacobian_array, new_params = self._normalize_jacobian(jacobian, new_parameters)
-        values = self._data.values
+        values = self.data.values
         transformed = np.matmul(
             np.matmul(jacobian_array, values), np.swapaxes(jacobian_array, -2, -1)
         )
@@ -283,28 +342,34 @@ class FisherMatrix:
         self,
         *,
         diagonal: Mapping[str, float] | None = None,
-        fisher: "FisherMatrix | xr.DataArray | None" = None,
+        fisher: "FisherMatrix | xr.DataArray | xr.Dataset | None" = None,
     ) -> "FisherMatrix":
-        # Check that exactly one parameter is provided
         n_provided = sum([diagonal is not None, fisher is not None])
         if n_provided != 1:
             raise ValueError("Specify exactly one of diagonal or fisher.")
+        other_dataset: xr.Dataset | None = None
         if diagonal is not None:
             prior = self._diagonal_prior(diagonal)
         else:
-            prior = fisher.data if isinstance(fisher, FisherMatrix) else fisher
+            if isinstance(fisher, FisherMatrix):
+                prior = fisher.data
+                other_dataset = fisher.dataset
+            elif isinstance(fisher, xr.Dataset):
+                prior = fisher[FISHER_VAR]
+                other_dataset = fisher
+            else:
+                prior = fisher
         if prior is None:
             raise ValueError("Prior DataArray is required.")
-        return self._add_dataarrays(self._data, prior)
+        return self._add_dataarrays(self.data, prior, other_dataset=other_dataset)
 
     def __add__(self, other: "FisherMatrix") -> "FisherMatrix":
         if self._dims.parameter_dims != other._dims.parameter_dims:
-            raise ValueError("Parameter dims must match to add Fisher matrices.")
-        return self._add_dataarrays(self._data, other.data)
+            raise ValueError("Row/col dims must match to add Fisher matrices.")
+        return self._add_dataarrays(self.data, other.data, other_dataset=other.dataset)
 
     def figure_of_merit(self, parameters: Sequence[str] | None = None) -> xr.DataArray:
         if parameters is None:
-            # Optimization: compute directly on full Fisher matrix
             cov = self.covariance()
         else:
             names = self._normalize_parameter_list(parameters)
@@ -324,32 +389,32 @@ class FisherMatrix:
     ) -> xr.DataArray:
         if deviation is None:
             stored = self.fiducials.get(parameter)
-            if fiducial is None or stored is None:
+            if fiducial is None or stored is None or _is_missing(stored):
                 raise ValueError(
                     "Provide deviation or both fiducial and stored fiducial."
                 )
             deviation = fiducial - stored
 
         errors = self.marginalized_errors(method=method)
-        sigma = errors.sel({self._dims.parameter_i: parameter}).values
+        sigma = errors.sel({self._dims.parameter: parameter}).values
         return self._scalar_dataarray(np.abs(deviation) / sigma)
 
     def sample(self, num_samples: int, *, method: str = "cholesky") -> xr.DataArray:
         if method != "cholesky":
             raise ValueError("Only cholesky sampling is supported.")
 
-        values = self._data.values
+        values = self.data.values
         rng = np.random.default_rng()
         samples = sample_from_fisher(values, num_samples, rng)
 
-        dims = ("sample", self._dims.parameter_i)
+        dims = ("sample", self._dims.parameter)
         coords = {
-            self._dims.parameter_i: self.parameters,
+            self._dims.parameter: self.parameters,
             "sample": np.arange(num_samples),
         }
         if self._batch_dim is not None:
             dims = (self._batch_dim,) + dims
-            coords[self._batch_dim] = self._data.coords[self._batch_dim].values
+            coords[self._batch_dim] = self.data.coords[self._batch_dim].values
         return xr.DataArray(samples, dims=dims, coords=coords)
 
     def format_constraint(
@@ -357,9 +422,7 @@ class FisherMatrix:
     ) -> str:
         if fiducial is None:
             fiducial = self.fiducials.get(parameter)
-        sigma = (
-            self.marginalized_errors().sel({self._dims.parameter_i: parameter}).values
-        )
+        sigma = self.marginalized_errors().sel({self._dims.parameter: parameter}).values
         label = self.labels.get(parameter, parameter)
         if use_latex:
             return f"${label} = {fiducial} \\pm {sigma}$"
@@ -399,7 +462,7 @@ class FisherMatrix:
         lines: list[str] = []
         for name in self.parameters:
             fid = fiducials_map.get(name)
-            err = errors.sel({self._dims.parameter_i: name}).values
+            err = errors.sel({self._dims.parameter: name}).values
             unit = units_map.get(name)
             label = self.labels.get(name, name)
             if use_latex:
@@ -436,9 +499,9 @@ class FisherMatrix:
 
     def save(self, path: str) -> None:
         if path.endswith(".zarr"):
-            self._data.to_zarr(path, mode="w")
+            self._dataset.to_zarr(path, mode="w")
             return
-        self._data.to_netcdf(path)
+        self._dataset.to_netcdf(path)
 
     @classmethod
     def load(
@@ -450,10 +513,15 @@ class FisherMatrix:
         dims: DatasetDims | None = None,
     ) -> "FisherMatrix":
         if path.endswith(".zarr"):
-            da = xr.open_zarr(path)
+            ds = xr.open_dataset(path)
         else:
-            da = xr.open_dataarray(path)
-        return cls(da, parameter_dims=parameter_dims, batch_dim=batch_dim, dims=dims)
+            ds = xr.open_dataset(path)
+            if FISHER_VAR not in ds and len(ds.data_vars) == 1:
+                da = xr.open_dataarray(path)
+                return cls(
+                    da, parameter_dims=parameter_dims, batch_dim=batch_dim, dims=dims
+                )
+        return cls(ds, parameter_dims=parameter_dims, batch_dim=batch_dim, dims=dims)
 
     def _split_parameters(self, selected: Sequence[str]) -> tuple[list[str], list[str]]:
         selected_set = set(selected)
@@ -474,16 +542,9 @@ class FisherMatrix:
         return [index_map[name] for name in names]
 
     def _get_batch_coords(self) -> np.ndarray | None:
-        """Get batch coordinates if batch dimension exists.
-
-        Returns
-        -------
-        np.ndarray | None
-            Batch coordinates array, or None if no batch dimension
-        """
         if self._batch_dim is None:
             return None
-        return self._data.coords[self._batch_dim].values
+        return self.data.coords[self._batch_dim].values
 
     def _matrix_dataarray(
         self, values: np.ndarray, parameters: Sequence[str]
@@ -492,7 +553,7 @@ class FisherMatrix:
         return build_matrix_dataarray(
             values,
             parameters,
-            parameter_dims=self._dims.parameter_dims,
+            parameter_dims=self._dims.matrix_dims,
             batch_dim=self._batch_dim or "batch",
             batch_coords=batch_coords,
         )
@@ -504,7 +565,7 @@ class FisherMatrix:
         return build_vector_dataarray(
             values,
             parameters,
-            parameter_dim=self._dims.parameter_i,
+            parameter_dim=self._dims.parameter,
             batch_dim=self._batch_dim or "batch",
             batch_coords=batch_coords,
         )
@@ -520,49 +581,46 @@ class FisherMatrix:
     def _new_from_values(
         self, values: np.ndarray, parameters: Sequence[str]
     ) -> "FisherMatrix":
-        labels = {name: self.labels.get(name, name) for name in parameters}
-        units = {name: self.units.get(name) for name in parameters}
-        fiducials = {name: self.fiducials.get(name) for name in parameters}
-        return FisherMatrix(
-            values,
-            parameters=list(parameters),
-            labels=labels,
-            units=units,
-            fiducials=fiducials,
-            parameter_dims=self._dims.parameter_dims,
-            batch_dim=self._batch_dim or "batch",
+        data = self._matrix_dataarray(values, parameters)
+        ds = xr.Dataset(
+            {FISHER_VAR: data}, coords={self._dims.parameter: list(parameters)}
         )
+        merged = self._merge_metadata_arrays(parameters)
+        for key, values in merged.items():
+            ds[key] = xr.DataArray(
+                values,
+                dims=(self._dims.parameter,),
+                coords={self._dims.parameter: list(parameters)},
+            )
+        return FisherMatrix(ds, dims=self._dims)
 
     def _add_dataarrays(
-        self, left: xr.DataArray, right: xr.DataArray
+        self,
+        left: xr.DataArray,
+        right: xr.DataArray,
+        *,
+        other_dataset: xr.Dataset | None = None,
     ) -> "FisherMatrix":
         aligned_left, aligned_right = xr.align(
             left, right, join="outer", fill_value=0.0
         )
         summed = aligned_left + aligned_right
-        params = list(summed.coords[self._dims.parameter_i].values)
+        params = list(summed.coords[self._dims.row].values)
 
-        labels = dict(self.labels)
-        labels.update(getattr(right, "attrs", {}).get("labels", {}))
-        units = dict(self.units)
-        units.update(getattr(right, "attrs", {}).get("units", {}))
-        fiducials = dict(self.fiducials)
-        fiducials.update(getattr(right, "attrs", {}).get("fiducials", {}))
-        return FisherMatrix(
-            summed,
-            parameters=params,
-            labels=labels,
-            units=units,
-            fiducials=fiducials,
-            parameter_dims=self._dims.parameter_dims,
-            batch_dim=self._batch_dim or "batch",
-        )
+        ds = xr.Dataset({FISHER_VAR: summed}, coords={self._dims.parameter: params})
+        merged = self._merge_metadata_arrays(params, other_dataset=other_dataset)
+        for key, values in merged.items():
+            ds[key] = xr.DataArray(
+                values,
+                dims=(self._dims.parameter,),
+                coords={self._dims.parameter: params},
+            )
+        return FisherMatrix(ds, dims=self._dims)
 
     def _diagonal_prior(self, diagonal: Mapping[str, float]) -> xr.DataArray:
         params = self.parameters
         size = len(params)
 
-        # Create diagonal matrix using vectorized indexing
         diag_values = np.zeros((size, size), dtype=float)
         indices = [params.index(name) for name in diagonal.keys()]
         values = list(diagonal.values())
@@ -570,7 +628,7 @@ class FisherMatrix:
 
         if self._batch_dim is not None:
             diag_values = np.broadcast_to(
-                diag_values, (self._data.sizes[self._batch_dim], size, size)
+                diag_values, (self.data.sizes[self._batch_dim], size, size)
             )
         return self._matrix_dataarray(diag_values, params)
 
@@ -602,69 +660,161 @@ class FisherMatrix:
         *,
         labels: Sequence[str] | Mapping[str, str] | None,
         units: Sequence[str | None] | Mapping[str, str | None] | None,
-        fiducials: Sequence[float | None] | Mapping[str, float | None] | None,
+        fiducials: Sequence[float | None]
+        | Mapping[str, float | None]
+        | ArrayLike
+        | None,
     ) -> None:
-        self.labels = labels if labels is not None else self._data.attrs.get("labels")
-        self.units = units if units is not None else self._data.attrs.get("units")
-        self.fiducials = (
-            fiducials if fiducials is not None else self._data.attrs.get("fiducials")
-        )
+        if labels is not None:
+            self.labels = labels
+        elif LABELS_VAR in self._dataset:
+            self._dataset[LABELS_VAR] = self._sanitize_metadata_da(
+                self._dataset[LABELS_VAR], dtype=np.dtype(object)
+            )
 
-        if labels is None and "labels" not in self._data.attrs:
-            self._set_attr_map("labels", None, default_factory=lambda name: name)
-        if units is None and "units" not in self._data.attrs:
-            self._set_attr_map("units", None, default_value=None)
-        if fiducials is None and "fiducials" not in self._data.attrs:
-            self._set_attr_map("fiducials", None, default_value=None)
+        if units is not None:
+            self.units = units
+        elif UNITS_VAR in self._dataset:
+            self._dataset[UNITS_VAR] = self._sanitize_metadata_da(
+                self._dataset[UNITS_VAR], dtype=np.dtype(object)
+            )
 
-    def _get_attr_map(
+        if fiducials is not None:
+            self.fiducials = fiducials
+        elif FIDUCIALS_VAR in self._dataset:
+            self._dataset[FIDUCIALS_VAR] = self._sanitize_metadata_da(
+                self._dataset[FIDUCIALS_VAR], dtype=np.dtype(float)
+            )
+
+    def _get_metadata_map(
         self,
         key: str,
         *,
         default_factory=None,
         default_value=None,
     ) -> dict:
-        raw = self._data.attrs.get(key)
-        if isinstance(raw, str):
-            raw = None
-        if raw is not None and not isinstance(raw, (Mapping, Sequence)):
-            raw = None
-        return normalize_metadata(
-            self.parameters,
-            raw,
-            default_factory=default_factory,
-            default_value=default_value,
-        )
+        values = self._metadata_array(key)
+        if values is None:
+            return {
+                name: default_factory(name)
+                if default_factory is not None
+                else default_value
+                for name in self.parameters
+            }
+        mapping: dict = {}
+        for name, value in zip(self.parameters, values, strict=True):
+            if _is_missing(value):
+                mapping[name] = (
+                    default_factory(name)
+                    if default_factory is not None
+                    else default_value
+                )
+            else:
+                mapping[name] = value
+        return mapping
 
-    def _set_attr_map(
+    def _set_metadata_var(
         self,
         key: str,
         value,
         *,
-        default_factory=None,
-        default_value=None,
+        dtype: np.dtype,
     ) -> None:
-        mapping = normalize_metadata(
+        if value is None:
+            if key in self._dataset:
+                self._dataset = self._dataset.drop_vars(key)
+            return
+        values = normalize_metadata_array(
             self.parameters,
             value,
-            default_factory=default_factory,
-            default_value=default_value,
+            fill_value=np.nan,
+            dtype=dtype,
         )
-        self._data.attrs[key] = mapping
+        if values is None:
+            return
+        self._dataset[key] = xr.DataArray(
+            values,
+            dims=(self._dims.parameter,),
+            coords={self._dims.parameter: self.parameters},
+        )
 
-    def _extract_parameters_from_da(self, da: xr.DataArray) -> list[str]:
-        dim = self._dims.parameter_i
+    def _metadata_array(
+        self,
+        key: str,
+        parameters: Sequence[str] | None = None,
+        dataset: xr.Dataset | None = None,
+    ) -> np.ndarray | None:
+        ds = dataset or self._dataset
+        if key not in ds:
+            return None
+        da = ds[key]
+        if self._dims.parameter not in da.dims:
+            raise ValueError(f"Metadata variable {key} must use parameter dim.")
+        target = self.parameters if parameters is None else list(parameters)
+        values = da.reindex({self._dims.parameter: target}).values
+        return np.asarray(values)
+
+    def _merge_metadata_arrays(
+        self,
+        parameters: Sequence[str],
+        *,
+        other_dataset: xr.Dataset | None = None,
+    ) -> dict[str, np.ndarray]:
+        merged: dict[str, np.ndarray] = {}
+        for key, dtype in (
+            (LABELS_VAR, np.dtype(object)),
+            (UNITS_VAR, np.dtype(object)),
+            (FIDUCIALS_VAR, np.dtype(float)),
+        ):
+            left = self._metadata_array(key, parameters=parameters)
+            right = self._metadata_array(
+                key, parameters=parameters, dataset=other_dataset
+            )
+            if left is None and right is None:
+                continue
+            if left is None:
+                merged[key] = np.asarray(right, dtype=dtype)
+                continue
+            if right is None:
+                merged[key] = np.asarray(left, dtype=dtype)
+                continue
+            left = np.asarray(left, dtype=dtype)
+            right = np.asarray(right, dtype=dtype)
+            mask = np.array([not _is_missing(value) for value in right], dtype=bool)
+            combined = left.copy()
+            combined[mask] = right[mask]
+            merged[key] = combined
+        return merged
+
+    def _sanitize_metadata_da(
+        self, da: xr.DataArray, *, dtype: np.dtype
+    ) -> xr.DataArray:
+        if da.ndim != 1:
+            raise ValueError("Metadata arrays must be 1D.")
+        if self._dims.parameter not in da.dims:
+            raise ValueError("Metadata arrays must use the parameter dimension.")
+        values = da.reindex({self._dims.parameter: self.parameters}).values.tolist()
+        values = [np.nan if value is None else value for value in values]
+        return xr.DataArray(
+            np.asarray(values, dtype=dtype),
+            dims=(self._dims.parameter,),
+            coords={self._dims.parameter: self.parameters},
+        )
+
+    def _extract_parameters_from_da(
+        self, da: xr.DataArray, parameter_dims: ParameterDims
+    ) -> list[str]:
+        dim = parameter_dims[0]
         if dim not in da.coords:
-            raise ValueError(f"Missing coordinate for parameter dim {dim}.")
+            raise ValueError(f"Missing coordinate for row dim {dim}.")
         return list(da.coords[dim].values)
 
     def _ensure_parameter_coords(
-        self, da: xr.DataArray, parameters: list[str]
+        self, da: xr.DataArray, parameters: list[str], parameter_dims: ParameterDims
     ) -> xr.DataArray:
-        if da.sizes[self._dims.parameter_i] != len(parameters):
+        row_dim, col_dim = parameter_dims
+        if da.sizes[row_dim] != len(parameters):
             raise ValueError("parameters length must match matrix size.")
-        if da.sizes[self._dims.parameter_j] != len(parameters):
+        if da.sizes[col_dim] != len(parameters):
             raise ValueError("parameters length must match matrix size.")
-        return da.assign_coords(
-            {self._dims.parameter_i: parameters, self._dims.parameter_j: parameters}
-        )
+        return da.assign_coords({row_dim: parameters, col_dim: parameters})

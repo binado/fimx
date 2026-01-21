@@ -4,7 +4,8 @@ from collections.abc import Hashable
 from dataclasses import dataclass
 from typing import TypeAlias
 
-ParameterDims: TypeAlias = tuple[Hashable, Hashable]
+MatrixDims: TypeAlias = tuple[Hashable, Hashable]
+ParameterDims: TypeAlias = MatrixDims
 
 
 @dataclass(frozen=True)
@@ -13,18 +14,25 @@ class DatasetDims:
 
     Attributes
     ----------
-    parameter_i : Hashable
-        First parameter dimension name (rows)
-    parameter_j : Hashable
-        Second parameter dimension name (columns)
+    row : Hashable
+        Row dimension name for Fisher matrices
+    col : Hashable
+        Column dimension name for Fisher matrices
+    parameter : Hashable
+        Dimension name for parameter metadata vectors
     batch : Hashable
         Batch dimension name
     """
 
-    parameter_i: Hashable = "parameter_i"
-    parameter_j: Hashable = "parameter_j"
+    row: Hashable = "row"
+    col: Hashable = "col"
+    parameter: Hashable = "parameter"
     batch: Hashable = "batch"
 
     @property
+    def matrix_dims(self) -> MatrixDims:
+        return (self.row, self.col)
+
+    @property
     def parameter_dims(self) -> ParameterDims:
-        return (self.parameter_i, self.parameter_j)
+        return self.matrix_dims
