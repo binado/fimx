@@ -8,7 +8,6 @@ import numpy as np
 import xarray as xr
 
 MatrixDims: TypeAlias = tuple[Hashable, Hashable]
-ParameterDims: TypeAlias = MatrixDims
 
 
 @dataclass(frozen=True)
@@ -35,10 +34,6 @@ class DatasetDims:
     @property
     def matrix_dims(self) -> MatrixDims:
         return (self.row, self.col)
-
-    @property
-    def parameter_dims(self) -> ParameterDims:
-        return self.matrix_dims
 
     @classmethod
     def infer_from_data(

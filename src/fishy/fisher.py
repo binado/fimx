@@ -19,7 +19,7 @@ from .diagnostics import (
     min_eigenvalues,
     min_max_eigenvalues,
 )
-from .dimensions import DatasetDims, ParameterDims
+from .dimensions import DatasetDims, MatrixDims
 from .inversion import invert_matrices
 from .metadata import normalize_metadata_array
 from .sampling import sample_from_fisher
@@ -85,10 +85,10 @@ class FisherMatrix:
                         parameter=resolved_dims.row,
                         batch=resolved_dims.batch,
                     )
-            parameter_dims = resolved_dims.matrix_dims
+            matrix_dims = resolved_dims.matrix_dims
             parameter_dim = resolved_dims.parameter
             batch_dim = resolved_dims.batch
-            da = stack_batches(da, parameter_dims=parameter_dims, batch_dim=batch_dim)
+            da = stack_batches(da, matrix_dims=matrix_dims, batch_dim=batch_dim)
             if isinstance(parameters, str):
                 if parameters not in da.coords:
                     raise ValueError(
@@ -96,8 +96,8 @@ class FisherMatrix:
                     )
                 parameters = list(da.coords[parameters].values)
             if parameters is None:
-                parameters = self._extract_parameters_from_da(da, parameter_dims)
-            da = self._ensure_parameter_coords(da, list(parameters), parameter_dims)
+                parameters = self._extract_parameters_from_da(da, matrix_dims)
+            da = self._ensure_parameter_coords(da, list(parameters), matrix_dims)
             ds[FISHER_VAR] = da
             ds = ds.assign_coords({parameter_dim: list(parameters)})
             self._dataset = ds
@@ -126,10 +126,10 @@ class FisherMatrix:
                         parameter=resolved_dims.row,
                         batch=resolved_dims.batch,
                     )
-            parameter_dims = resolved_dims.matrix_dims
+            matrix_dims = resolved_dims.matrix_dims
             parameter_dim = resolved_dims.parameter
             batch_dim = resolved_dims.batch
-            da = stack_batches(da, parameter_dims=parameter_dims, batch_dim=batch_dim)
+            da = stack_batches(da, matrix_dims=matrix_dims, batch_dim=batch_dim)
             if isinstance(parameters, str):
                 if parameters not in da.coords:
                     raise ValueError(
@@ -137,8 +137,8 @@ class FisherMatrix:
                     )
                 parameters = list(da.coords[parameters].values)
             if parameters is None:
-                parameters = self._extract_parameters_from_da(da, parameter_dims)
-            da = self._ensure_parameter_coords(da, list(parameters), parameter_dims)
+                parameters = self._extract_parameters_from_da(da, matrix_dims)
+            da = self._ensure_parameter_coords(da, list(parameters), matrix_dims)
             ds = xr.Dataset({FISHER_VAR: da}, coords={parameter_dim: list(parameters)})
             self._dataset = ds
         else:
@@ -148,13 +148,13 @@ class FisherMatrix:
                 )
             if dims is None:
                 raise ValueError("dims are required when data is not an xarray object.")
-            parameter_dims = dims.matrix_dims
+            matrix_dims = dims.matrix_dims
             parameter_dim = dims.parameter
             batch_dim = dims.batch
             da = build_dataarray_from_array(
                 np.asarray(data),
                 list(parameters),
-                parameter_dims=parameter_dims,
+                matrix_dims=matrix_dims,
                 batch_dim=batch_dim,
             )
             ds = xr.Dataset({FISHER_VAR: da}, coords={parameter_dim: list(parameters)})
@@ -162,8 +162,8 @@ class FisherMatrix:
 
         self._batch_dim = batch_dim if self._dataset[FISHER_VAR].ndim > 2 else None
         self._dims = DatasetDims(
-            row=parameter_dims[0],
-            col=parameter_dims[1],
+            row=matrix_dims[0],
+            col=matrix_dims[1],
             parameter=parameter_dim,
             batch=batch_dim,
         )
@@ -182,8 +182,8 @@ class FisherMatrix:
         return self._dataset[FISHER_VAR].coords[self._dims.row].values.tolist()
 
     @property
-    def parameter_dims(self) -> ParameterDims:
-        return self._dims.parameter_dims
+    def matrix_dims(self) -> MatrixDims:
+        return self._dims.matrix_dims
 
     @property
     def dataset_dims(self) -> DatasetDims:
@@ -400,7 +400,7 @@ class FisherMatrix:
         return self._add_dataarrays(self.data, prior, other_dataset=other_dataset)
 
     def __add__(self, other: "FisherMatrix") -> "FisherMatrix":
-        if self._dims.parameter_dims != other._dims.parameter_dims:
+        if self._dims.matrix_dims != other._dims.matrix_dims:
             raise ValueError("Row/col dims must match to add Fisher matrices.")
         return self._add_dataarrays(self.data, other.data, other_dataset=other.dataset)
 
@@ -583,7 +583,7 @@ class FisherMatrix:
         return build_matrix_dataarray(
             values,
             parameters,
-            parameter_dims=self._dims.matrix_dims,
+            matrix_dims=self._dims.matrix_dims,
             batch_dim=self._batch_dim or "batch",
             batch_coords=batch_coords,
         )
@@ -815,17 +815,17 @@ class FisherMatrix:
         )
 
     def _extract_parameters_from_da(
-        self, da: xr.DataArray, parameter_dims: ParameterDims
+        self, da: xr.DataArray, matrix_dims: MatrixDims
     ) -> list[str]:
-        dim = parameter_dims[0]
+        dim = matrix_dims[0]
         if dim not in da.coords:
             raise ValueError(f"Missing coordinate for row dim {dim}.")
         return list(da.coords[dim].values)
 
     def _ensure_parameter_coords(
-        self, da: xr.DataArray, parameters: list[str], parameter_dims: ParameterDims
+        self, da: xr.DataArray, parameters: list[str], matrix_dims: MatrixDims
     ) -> xr.DataArray:
-        row_dim, col_dim = parameter_dims
+        row_dim, col_dim = matrix_dims
         if da.sizes[row_dim] != len(parameters):
             raise ValueError("parameters length must match matrix size.")
         if da.sizes[col_dim] != len(parameters):

@@ -6,16 +6,16 @@ import numpy as np
 from numpy.typing import ArrayLike
 import xarray as xr
 
-from .dimensions import ParameterDims
+from .dimensions import MatrixDims
 
 
 def stack_batches(
     da: xr.DataArray,
     *,
-    parameter_dims: ParameterDims,
+    matrix_dims: MatrixDims,
     batch_dim: Hashable,
 ) -> xr.DataArray:
-    batch_dims = [dim for dim in da.dims if dim not in parameter_dims]
+    batch_dims = [dim for dim in da.dims if dim not in matrix_dims]
     if not batch_dims:
         return da
     if len(batch_dims) == 1:
@@ -31,7 +31,7 @@ def build_dataarray_from_array(
     array: np.ndarray,
     parameters: Sequence[str],
     *,
-    parameter_dims: ParameterDims,
+    matrix_dims: MatrixDims,
     batch_dim: Hashable,
 ) -> xr.DataArray:
     array = _reshape_batch_dims(np.asarray(array))
@@ -41,14 +41,14 @@ def build_dataarray_from_array(
         raise ValueError("parameters length must match matrix size.")
 
     if array.ndim == 2:
-        dims = parameter_dims
-        coords = {parameter_dims[0]: parameters, parameter_dims[1]: parameters}
+        dims = matrix_dims
+        coords = {matrix_dims[0]: parameters, matrix_dims[1]: parameters}
     else:
-        dims = (batch_dim,) + parameter_dims
+        dims = (batch_dim,) + matrix_dims
         coords = {
             batch_dim: np.arange(array.shape[0]),
-            parameter_dims[0]: parameters,
-            parameter_dims[1]: parameters,
+            matrix_dims[0]: parameters,
+            matrix_dims[1]: parameters,
         }
     return xr.DataArray(array, dims=dims, coords=coords)
 
@@ -102,7 +102,7 @@ def build_matrix_dataarray(
     values: np.ndarray,
     parameters: Sequence[str],
     *,
-    parameter_dims: ParameterDims,
+    matrix_dims: MatrixDims,
     batch_dim: Hashable,
     batch_coords: ArrayLike | None = None,
 ) -> xr.DataArray:
@@ -114,7 +114,7 @@ def build_matrix_dataarray(
         Array of shape (n, n) or (batch, n, n)
     parameters : Sequence[str]
         Parameter names for the matrix dimensions
-    parameter_dims : ParameterDims
+    matrix_dims : MatrixDims
         Names for the parameter dimensions
     batch_dim : Hashable
         Name for the batch dimension (used only if values has batch dims)
@@ -127,14 +127,14 @@ def build_matrix_dataarray(
         DataArray with appropriate dimensions and coordinates
     """
     if values.ndim == 2:
-        dims = parameter_dims
-        coords = {parameter_dims[0]: parameters, parameter_dims[1]: parameters}
+        dims = matrix_dims
+        coords = {matrix_dims[0]: parameters, matrix_dims[1]: parameters}
     elif values.ndim == 3:
-        dims = (batch_dim,) + parameter_dims
+        dims = (batch_dim,) + matrix_dims
         coords = {
             batch_dim: _ensure_batch_coords(batch_coords, values.shape[0]),
-            parameter_dims[0]: parameters,
-            parameter_dims[1]: parameters,
+            matrix_dims[0]: parameters,
+            matrix_dims[1]: parameters,
         }
     else:
         raise ValueError(f"Expected 2D or 3D array, got {values.ndim}D")
