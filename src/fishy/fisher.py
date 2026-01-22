@@ -206,15 +206,9 @@ class FisherMatrix:
             normalized = _normalize_ndarray(np.asarray(data), parameters, dims)
 
         self._dataset = normalized.dataset
-        resolved_dims = normalized.dims
+        self._dims = normalized.dims
         self._batch_dim = (
-            resolved_dims.batch if self._dataset[FISHER_VAR].ndim > 2 else None
-        )
-        self._dims = DatasetDims(
-            row=resolved_dims.matrix_dims[0],
-            col=resolved_dims.matrix_dims[1],
-            parameter=resolved_dims.parameter,
-            batch=resolved_dims.batch,
+            self._dims.batch if self._dataset[FISHER_VAR].ndim > 2 else None
         )
         self._sync_metadata(labels=labels, units=units, fiducials=fiducials)
 
