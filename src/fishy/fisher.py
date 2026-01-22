@@ -190,16 +190,16 @@ class FisherMatrix:
         return self._dims
 
     @property
-    def labels(self) -> dict[str, str]:
-        return self._get_metadata_map(LABELS_VAR, default_factory=lambda name: name)
+    def labels(self) -> xr.DataArray | None:
+        return getattr(self._dataset, LABELS_VAR, None)
 
     @labels.setter
     def labels(self, value: Sequence[str] | Mapping[str, str] | None) -> None:
         self._set_metadata_var(LABELS_VAR, value, dtype=np.dtype(object))
 
     @property
-    def units(self) -> dict[str, str | None]:
-        return self._get_metadata_map(UNITS_VAR, default_value=None)
+    def units(self) -> xr.DataArray | None:
+        return getattr(self._dataset, UNITS_VAR, None)
 
     @units.setter
     def units(
@@ -208,8 +208,8 @@ class FisherMatrix:
         self._set_metadata_var(UNITS_VAR, value, dtype=np.dtype(object))
 
     @property
-    def fiducials(self) -> dict[str, float | None]:
-        return self._get_metadata_map(FIDUCIALS_VAR, default_value=None)
+    def fiducials(self) -> xr.DataArray | None:
+        return getattr(self._dataset, FIDUCIALS_VAR, None)
 
     @fiducials.setter
     def fiducials(
@@ -424,8 +424,8 @@ class FisherMatrix:
         method: str = "cholesky",
     ) -> xr.DataArray:
         if deviation is None:
-            stored = self.fiducials.get(parameter)
-            if fiducial is None or stored is None or _is_missing(stored):
+            stored = self._metadata_value(self.fiducials, parameter)
+            if fiducial is None or stored is None:
                 raise ValueError(
                     "Provide deviation or both fiducial and stored fiducial."
                 )
@@ -457,9 +457,9 @@ class FisherMatrix:
         self, parameter: str, *, fiducial: float | None = None, use_latex: bool = True
     ) -> str:
         if fiducial is None:
-            fiducial = self.fiducials.get(parameter)
+            fiducial = self._metadata_value(self.fiducials, parameter)
         sigma = self.marginalized_errors().sel({self._dims.parameter: parameter}).values
-        label = self.labels.get(parameter, parameter)
+        label = self._metadata_value(self.labels, parameter) or parameter
         if use_latex:
             return f"${label} = {fiducial} \\pm {sigma}$"
         return f"{label} = {fiducial} +/- {sigma}"
@@ -487,20 +487,17 @@ class FisherMatrix:
         str
             Formatted summary string with one parameter per line
         """
-        fiducials_map = dict(self.fiducials)
-        if fiducials:
-            fiducials_map.update(fiducials)
-        units_map = dict(self.units)
-        if units:
-            units_map.update(units)
-
         errors = self.marginalized_errors()
         lines: list[str] = []
         for name in self.parameters:
-            fid = fiducials_map.get(name)
+            fid = self._metadata_value(self.fiducials, name)
+            if fiducials is not None and name in fiducials:
+                fid = fiducials[name]
             err = errors.sel({self._dims.parameter: name}).values
-            unit = units_map.get(name)
-            label = self.labels.get(name, name)
+            unit = self._metadata_value(self.units, name)
+            if units is not None and name in units:
+                unit = units[name]
+            label = self._metadata_value(self.labels, name) or name
             if use_latex:
                 line = f"${label} = {fid} \\pm {err}$"
             else:
@@ -719,33 +716,6 @@ class FisherMatrix:
                 self._dataset[FIDUCIALS_VAR], dtype=np.dtype(float)
             )
 
-    def _get_metadata_map(
-        self,
-        key: str,
-        *,
-        default_factory=None,
-        default_value=None,
-    ) -> dict:
-        values = self._metadata_array(key)
-        if values is None:
-            return {
-                name: default_factory(name)
-                if default_factory is not None
-                else default_value
-                for name in self.parameters
-            }
-        mapping: dict = {}
-        for name, value in zip(self.parameters, values, strict=True):
-            if _is_missing(value):
-                mapping[name] = (
-                    default_factory(name)
-                    if default_factory is not None
-                    else default_value
-                )
-            else:
-                mapping[name] = value
-        return mapping
-
     def _set_metadata_var(
         self,
         key: str,
@@ -770,6 +740,16 @@ class FisherMatrix:
             dims=(self._dims.parameter,),
             coords={self._dims.parameter: self.parameters},
         )
+
+    def _metadata_value(self, da: xr.DataArray | None, parameter: str) -> object | None:
+        if da is None:
+            return None
+        if self._dims.parameter not in da.dims:
+            raise ValueError("Metadata arrays must use the parameter dimension.")
+        value = da.sel({self._dims.parameter: parameter}).item()
+        if _is_missing(value):
+            return None
+        return value
 
     def _metadata_array(
         self,
