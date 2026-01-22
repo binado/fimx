@@ -357,7 +357,7 @@ class FisherMatrix:
         if not keep:
             raise ValueError("Cannot fix all parameters.")
 
-        row_dim, col_dim = self._dims.row, self._dims.col
+        row_dim, col_dim = self._dims.matrix_dims
         reduced_da = self.data.sel({row_dim: keep, col_dim: keep})
         return self._new_from_values(reduced_da.values, keep)
 
