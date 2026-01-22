@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 
 import numpy as np
 import xarray as xr
@@ -41,6 +42,144 @@ def _is_missing(value: object) -> bool:
     return False
 
 
+@dataclass
+class _NormalizedInput:
+    """Intermediate result from normalizing input data."""
+
+    dataset: xr.Dataset
+    dims: DatasetDims
+
+
+def _resolve_dims(
+    da: xr.DataArray,
+    parameters: Sequence[str] | str | None,
+    dims: DatasetDims | None,
+) -> DatasetDims:
+    """Resolve DatasetDims from a DataArray."""
+    if dims is not None:
+        if not all(dim in da.dims for dim in dims.matrix_dims):
+            raise ValueError("Row/col dims are missing from data.")
+        return dims
+
+    if isinstance(parameters, str):
+        return DatasetDims.infer_from_data(da, parameters)
+
+    resolved = DatasetDims(
+        row=da.dims[-2],
+        col=da.dims[-1],
+        parameter=DEFAULT_DIMS.parameter,
+        batch=DEFAULT_DIMS.batch,
+    )
+    if resolved.parameter in da.coords and resolved.parameter not in da.dims:
+        resolved = DatasetDims(
+            row=resolved.row,
+            col=resolved.col,
+            parameter=resolved.row,
+            batch=resolved.batch,
+        )
+    return resolved
+
+
+def _extract_parameters(
+    da: xr.DataArray,
+    parameters: Sequence[str] | str | None,
+    matrix_dims: MatrixDims,
+) -> list[str]:
+    """Extract parameter names from DataArray or parameters argument."""
+    if isinstance(parameters, str):
+        if parameters not in da.coords:
+            raise ValueError(f"Missing coordinate '{parameters}' for data.")
+        return list(da.coords[parameters].values)
+    if parameters is not None:
+        return list(parameters)
+    row_dim = matrix_dims[0]
+    if row_dim not in da.coords:
+        raise ValueError(f"Missing coordinate for row dim {row_dim}.")
+    return list(da.coords[row_dim].values)
+
+
+def _ensure_parameter_coords(
+    da: xr.DataArray, parameters: list[str], matrix_dims: MatrixDims
+) -> xr.DataArray:
+    """Assign parameter coordinates to row and column dimensions."""
+    row_dim, col_dim = matrix_dims
+    if da.sizes[row_dim] != len(parameters):
+        raise ValueError("parameters length must match matrix size.")
+    if da.sizes[col_dim] != len(parameters):
+        raise ValueError("parameters length must match matrix size.")
+    return da.assign_coords({row_dim: parameters, col_dim: parameters})
+
+
+def _normalize_dataarray(
+    da: xr.DataArray,
+    parameters: Sequence[str] | str | None,
+    dims: DatasetDims | None,
+) -> _NormalizedInput:
+    """Normalize a DataArray into a Dataset with resolved dims."""
+    if da.ndim < 2:
+        raise ValueError("Fisher matrix must be at least 2D.")
+
+    resolved_dims = _resolve_dims(da, parameters, dims)
+    matrix_dims = resolved_dims.matrix_dims
+    batch_dim = resolved_dims.batch
+    parameter_dim = resolved_dims.parameter
+
+    da = stack_batches(da, matrix_dims=matrix_dims, batch_dim=batch_dim)
+    params = _extract_parameters(da, parameters, matrix_dims)
+    da = _ensure_parameter_coords(da, params, matrix_dims)
+
+    ds = xr.Dataset({FISHER_VAR: da}, coords={parameter_dim: params})
+    return _NormalizedInput(dataset=ds, dims=resolved_dims)
+
+
+def _normalize_dataset(
+    ds: xr.Dataset,
+    parameters: Sequence[str] | str | None,
+    dims: DatasetDims | None,
+) -> _NormalizedInput:
+    """Normalize a Dataset with a fisher_matrix variable."""
+    ds = ds.copy()
+    if FISHER_VAR not in ds:
+        raise ValueError("Dataset must contain a fisher_matrix variable.")
+
+    da = ds[FISHER_VAR]
+    if da.ndim < 2:
+        raise ValueError("Fisher matrix must be at least 2D.")
+
+    resolved_dims = _resolve_dims(da, parameters, dims)
+    matrix_dims = resolved_dims.matrix_dims
+    batch_dim = resolved_dims.batch
+    parameter_dim = resolved_dims.parameter
+
+    da = stack_batches(da, matrix_dims=matrix_dims, batch_dim=batch_dim)
+    params = _extract_parameters(da, parameters, matrix_dims)
+    da = _ensure_parameter_coords(da, params, matrix_dims)
+
+    ds[FISHER_VAR] = da
+    ds = ds.assign_coords({parameter_dim: params})
+    return _NormalizedInput(dataset=ds, dims=resolved_dims)
+
+
+def _normalize_ndarray(
+    data: np.ndarray,
+    parameters: Sequence[str],
+    dims: DatasetDims,
+) -> _NormalizedInput:
+    """Normalize a numpy array into a Dataset."""
+    matrix_dims = dims.matrix_dims
+    batch_dim = dims.batch
+    parameter_dim = dims.parameter
+
+    da = build_dataarray_from_array(
+        data,
+        list(parameters),
+        matrix_dims=matrix_dims,
+        batch_dim=batch_dim,
+    )
+    ds = xr.Dataset({FISHER_VAR: da}, coords={parameter_dim: list(parameters)})
+    return _NormalizedInput(dataset=ds, dims=dims)
+
+
 class FisherMatrix:
     def __init__(
         self,
@@ -58,89 +197,9 @@ class FisherMatrix:
         self._cache: xr.Dataset = xr.Dataset()
 
         if isinstance(data, xr.Dataset):
-            ds = data.copy()
-            if FISHER_VAR not in ds:
-                raise ValueError("Dataset must contain a fisher_matrix variable.")
-            da = ds[FISHER_VAR]
-            if da.ndim < 2:
-                raise ValueError("Fisher matrix must be at least 2D.")
-            if dims is not None:
-                if not all(dim in da.dims for dim in dims.matrix_dims):
-                    raise ValueError("Row/col dims are missing from fisher_matrix.")
-                resolved_dims = dims
-            elif isinstance(parameters, str):
-                resolved_dims = DatasetDims.infer_from_data(da, parameters)
-            else:
-                resolved_dims = DatasetDims(
-                    row=da.dims[-2],
-                    col=da.dims[-1],
-                    parameter=DEFAULT_DIMS.parameter,
-                    batch=DEFAULT_DIMS.batch,
-                )
-            if dims is None and resolved_dims.parameter in da.coords:
-                if resolved_dims.parameter not in da.dims:
-                    resolved_dims = DatasetDims(
-                        row=resolved_dims.row,
-                        col=resolved_dims.col,
-                        parameter=resolved_dims.row,
-                        batch=resolved_dims.batch,
-                    )
-            matrix_dims = resolved_dims.matrix_dims
-            parameter_dim = resolved_dims.parameter
-            batch_dim = resolved_dims.batch
-            da = stack_batches(da, matrix_dims=matrix_dims, batch_dim=batch_dim)
-            if isinstance(parameters, str):
-                if parameters not in da.coords:
-                    raise ValueError(
-                        f"Missing coordinate '{parameters}' for fisher_matrix."
-                    )
-                parameters = list(da.coords[parameters].values)
-            if parameters is None:
-                parameters = self._extract_parameters_from_da(da, matrix_dims)
-            da = self._ensure_parameter_coords(da, list(parameters), matrix_dims)
-            ds[FISHER_VAR] = da
-            ds = ds.assign_coords({parameter_dim: list(parameters)})
-            self._dataset = ds
+            normalized = _normalize_dataset(data, parameters, dims)
         elif isinstance(data, xr.DataArray):
-            da = data
-            if da.ndim < 2:
-                raise ValueError("Fisher matrix must be at least 2D.")
-            if dims is not None:
-                if not all(dim in da.dims for dim in dims.matrix_dims):
-                    raise ValueError("Row/col dims are missing from DataArray.")
-                resolved_dims = dims
-            elif isinstance(parameters, str):
-                resolved_dims = DatasetDims.infer_from_data(da, parameters)
-            else:
-                resolved_dims = DatasetDims(
-                    row=da.dims[-2],
-                    col=da.dims[-1],
-                    parameter=DEFAULT_DIMS.parameter,
-                    batch=DEFAULT_DIMS.batch,
-                )
-            if dims is None and resolved_dims.parameter in da.coords:
-                if resolved_dims.parameter not in da.dims:
-                    resolved_dims = DatasetDims(
-                        row=resolved_dims.row,
-                        col=resolved_dims.col,
-                        parameter=resolved_dims.row,
-                        batch=resolved_dims.batch,
-                    )
-            matrix_dims = resolved_dims.matrix_dims
-            parameter_dim = resolved_dims.parameter
-            batch_dim = resolved_dims.batch
-            da = stack_batches(da, matrix_dims=matrix_dims, batch_dim=batch_dim)
-            if isinstance(parameters, str):
-                if parameters not in da.coords:
-                    raise ValueError(
-                        f"Missing coordinate '{parameters}' for DataArray."
-                    )
-                parameters = list(da.coords[parameters].values)
-            if parameters is None:
-                parameters = self._extract_parameters_from_da(da, matrix_dims)
-            da = self._ensure_parameter_coords(da, list(parameters), matrix_dims)
-            ds = xr.Dataset({FISHER_VAR: da}, coords={parameter_dim: list(parameters)})
-            self._dataset = ds
+            normalized = _normalize_dataarray(data, parameters, dims)
         else:
             if parameters is None or isinstance(parameters, str):
                 raise ValueError(
@@ -148,24 +207,18 @@ class FisherMatrix:
                 )
             if dims is None:
                 raise ValueError("dims are required when data is not an xarray object.")
-            matrix_dims = dims.matrix_dims
-            parameter_dim = dims.parameter
-            batch_dim = dims.batch
-            da = build_dataarray_from_array(
-                np.asarray(data),
-                list(parameters),
-                matrix_dims=matrix_dims,
-                batch_dim=batch_dim,
-            )
-            ds = xr.Dataset({FISHER_VAR: da}, coords={parameter_dim: list(parameters)})
-            self._dataset = ds
+            normalized = _normalize_ndarray(np.asarray(data), parameters, dims)
 
-        self._batch_dim = batch_dim if self._dataset[FISHER_VAR].ndim > 2 else None
+        self._dataset = normalized.dataset
+        resolved_dims = normalized.dims
+        self._batch_dim = (
+            resolved_dims.batch if self._dataset[FISHER_VAR].ndim > 2 else None
+        )
         self._dims = DatasetDims(
-            row=matrix_dims[0],
-            col=matrix_dims[1],
-            parameter=parameter_dim,
-            batch=batch_dim,
+            row=resolved_dims.matrix_dims[0],
+            col=resolved_dims.matrix_dims[1],
+            parameter=resolved_dims.parameter,
+            batch=resolved_dims.batch,
         )
         self._sync_metadata(labels=labels, units=units, fiducials=fiducials)
 
@@ -813,21 +866,3 @@ class FisherMatrix:
             dims=(self._dims.parameter,),
             coords={self._dims.parameter: self.parameters},
         )
-
-    def _extract_parameters_from_da(
-        self, da: xr.DataArray, matrix_dims: MatrixDims
-    ) -> list[str]:
-        dim = matrix_dims[0]
-        if dim not in da.coords:
-            raise ValueError(f"Missing coordinate for row dim {dim}.")
-        return list(da.coords[dim].values)
-
-    def _ensure_parameter_coords(
-        self, da: xr.DataArray, parameters: list[str], matrix_dims: MatrixDims
-    ) -> xr.DataArray:
-        row_dim, col_dim = matrix_dims
-        if da.sizes[row_dim] != len(parameters):
-            raise ValueError("parameters length must match matrix size.")
-        if da.sizes[col_dim] != len(parameters):
-            raise ValueError("parameters length must match matrix size.")
-        return da.assign_coords({row_dim: parameters, col_dim: parameters})
