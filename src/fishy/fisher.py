@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import functools
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
@@ -110,12 +111,13 @@ def _ensure_parameter_coords(
     return da.assign_coords({row_dim: parameters, col_dim: parameters})
 
 
-def _normalize_dataarray(
+def _normalize_fisher_into_dataset(
+    ds: xr.Dataset,
     da: xr.DataArray,
     parameters: Sequence[str] | str | None,
     dims: DatasetDims | None,
 ) -> _NormalizedInput:
-    """Normalize a DataArray into a Dataset with resolved dims."""
+    """Normalize a Fisher DataArray into a Dataset with resolved dims."""
     if da.ndim < 2:
         raise ValueError("Fisher matrix must be at least 2D.")
 
@@ -128,8 +130,19 @@ def _normalize_dataarray(
     params = _extract_parameters(da, parameters, matrix_dims)
     da = _ensure_parameter_coords(da, params, matrix_dims)
 
-    ds = xr.Dataset({FISHER_VAR: da}, coords={parameter_dim: params})
+    ds = ds.copy()
+    ds[FISHER_VAR] = da
+    ds = ds.assign_coords({parameter_dim: params})
     return _NormalizedInput(dataset=ds, dims=resolved_dims)
+
+
+def _normalize_dataarray(
+    da: xr.DataArray,
+    parameters: Sequence[str] | str | None,
+    dims: DatasetDims | None,
+) -> _NormalizedInput:
+    """Normalize a DataArray into a Dataset with resolved dims."""
+    return _normalize_fisher_into_dataset(xr.Dataset(), da, parameters, dims)
 
 
 def _normalize_dataset(
@@ -138,26 +151,9 @@ def _normalize_dataset(
     dims: DatasetDims | None,
 ) -> _NormalizedInput:
     """Normalize a Dataset with a fisher_matrix variable."""
-    ds = ds.copy()
     if FISHER_VAR not in ds:
         raise ValueError("Dataset must contain a fisher_matrix variable.")
-
-    da = ds[FISHER_VAR]
-    if da.ndim < 2:
-        raise ValueError("Fisher matrix must be at least 2D.")
-
-    resolved_dims = _resolve_dims(da, parameters, dims)
-    matrix_dims = resolved_dims.matrix_dims
-    batch_dim = resolved_dims.batch
-    parameter_dim = resolved_dims.parameter
-
-    da = stack_batches(da, matrix_dims=matrix_dims, batch_dim=batch_dim)
-    params = _extract_parameters(da, parameters, matrix_dims)
-    da = _ensure_parameter_coords(da, params, matrix_dims)
-
-    ds[FISHER_VAR] = da
-    ds = ds.assign_coords({parameter_dim: params})
-    return _NormalizedInput(dataset=ds, dims=resolved_dims)
+    return _normalize_fisher_into_dataset(ds, ds[FISHER_VAR], parameters, dims)
 
 
 def _normalize_ndarray(
@@ -620,14 +616,19 @@ class FisherMatrix:
             return [parameters]
         return list(parameters)
 
+    @functools.cached_property
+    def _parameter_index_map(self) -> dict[str, int]:
+        return {name: idx for idx, name in enumerate(self.parameters)}
+
     def _indices_for(self, names: Sequence[str]) -> list[int]:
-        index_map = {name: idx for idx, name in enumerate(self.parameters)}
-        return [index_map[name] for name in names]
+        return [self._parameter_index_map[name] for name in names]
 
     def _get_batch_coords(self) -> np.ndarray | None:
-        if self._batch_dim is None:
-            return None
-        return self.data.coords[self._batch_dim].values
+        return (
+            None
+            if self._batch_dim is None
+            else self.data.coords[self._batch_dim].values
+        )
 
     def _matrix_dataarray(
         self, values: np.ndarray, parameters: Sequence[str]
@@ -661,20 +662,30 @@ class FisherMatrix:
             batch_coords=batch_coords,
         )
 
+    def _build_dataset_with_metadata(
+        self,
+        matrix: xr.DataArray,
+        parameters: Sequence[str],
+        *,
+        other_dataset: xr.Dataset | None = None,
+    ) -> xr.Dataset:
+        """Build a Dataset with Fisher matrix and merged metadata."""
+        params = list(parameters)
+        ds = xr.Dataset({FISHER_VAR: matrix}, coords={self._dims.parameter: params})
+        merged = self._merge_metadata_arrays(params, other_dataset=other_dataset)
+        for key, arr in merged.items():
+            ds[key] = xr.DataArray(
+                arr,
+                dims=(self._dims.parameter,),
+                coords={self._dims.parameter: params},
+            )
+        return ds
+
     def _new_from_values(
         self, values: np.ndarray, parameters: Sequence[str]
     ) -> "FisherMatrix":
         data = self._matrix_dataarray(values, parameters)
-        ds = xr.Dataset(
-            {FISHER_VAR: data}, coords={self._dims.parameter: list(parameters)}
-        )
-        merged = self._merge_metadata_arrays(parameters)
-        for key, values in merged.items():
-            ds[key] = xr.DataArray(
-                values,
-                dims=(self._dims.parameter,),
-                coords={self._dims.parameter: list(parameters)},
-            )
+        ds = self._build_dataset_with_metadata(data, parameters)
         return FisherMatrix(ds, dims=self._dims)
 
     def _add_dataarrays(
@@ -689,15 +700,9 @@ class FisherMatrix:
         )
         summed = aligned_left + aligned_right
         params = list(summed.coords[self._dims.row].values)
-
-        ds = xr.Dataset({FISHER_VAR: summed}, coords={self._dims.parameter: params})
-        merged = self._merge_metadata_arrays(params, other_dataset=other_dataset)
-        for key, values in merged.items():
-            ds[key] = xr.DataArray(
-                values,
-                dims=(self._dims.parameter,),
-                coords={self._dims.parameter: params},
-            )
+        ds = self._build_dataset_with_metadata(
+            summed, params, other_dataset=other_dataset
+        )
         return FisherMatrix(ds, dims=self._dims)
 
     def _diagonal_prior(self, diagonal: Mapping[str, float]) -> xr.DataArray:
@@ -705,9 +710,8 @@ class FisherMatrix:
         size = len(params)
 
         diag_values = np.zeros((size, size), dtype=float)
-        indices = [params.index(name) for name in diagonal.keys()]
-        values = list(diagonal.values())
-        diag_values[indices, indices] = values
+        indices = self._indices_for(list(diagonal.keys()))
+        diag_values[indices, indices] = list(diagonal.values())
 
         if self._batch_dim is not None:
             diag_values = np.broadcast_to(
