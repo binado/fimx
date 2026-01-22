@@ -186,7 +186,7 @@ class FisherMatrix:
         return self._dims.parameter_dims
 
     @property
-    def dims(self) -> DatasetDims:
+    def dataset_dims(self) -> DatasetDims:
         return self._dims
 
     @property
