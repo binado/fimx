@@ -2,6 +2,7 @@ from typing import Any, Hashable
 
 import numpy as np
 import xarray as xr
+from numpy.typing import NDArray
 
 
 def _ensure_dims(da: xr.DataArray) -> None:
@@ -101,4 +102,24 @@ def pinv(da: xr.DataArray, rcond: float = 1e-15) -> xr.DataArray:
         input_core_dims=[matrix_dims],
         output_core_dims=[[col_dim, row_dim]],
         kwargs={"rcond": rcond},
+    )
+
+
+def _matrix_transpose(a: NDArray) -> NDArray:
+    return np.swapaxes(a, -2, -1)
+
+
+def _symmetrize(a: NDArray) -> NDArray:
+    at = _matrix_transpose(a)
+    return (a + at) / 2
+
+
+def symmetrize(da: xr.DataArray) -> xr.DataArray:
+    _ensure_square(da)
+    matrix_dims = _get_matrix_dims(da)
+    return xr.apply_ufunc(
+        _symmetrize,
+        da,
+        input_core_dims=[matrix_dims],
+        output_core_dims=[matrix_dims],
     )

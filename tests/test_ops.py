@@ -184,3 +184,35 @@ class TestPinv:
     def test_pinv_batched(self, batched_matrix: xr.DataArray):
         result = ops.pinv(batched_matrix)
         assert result.dims == ("batch", "col", "row")
+
+
+class TestSymmetrize:
+    def test_symmetrize_symmetric_matrix(self, identity_matrix: xr.DataArray):
+        result = ops.symmetrize(identity_matrix)
+        np.testing.assert_allclose(result.values, identity_matrix.values)
+
+    def test_symmetrize_asymmetric_matrix(self, square_matrix: xr.DataArray):
+        result = ops.symmetrize(square_matrix)
+        expected = (square_matrix.values + square_matrix.values.T) / 2
+        np.testing.assert_allclose(result.values, expected)
+        assert result.dims == square_matrix.dims
+
+    def test_symmetrize_result_is_symmetric(self, square_matrix: xr.DataArray):
+        result = ops.symmetrize(square_matrix)
+        np.testing.assert_allclose(result.values, result.values.T)
+
+    def test_symmetrize_raises_on_non_square(self, non_square_matrix: xr.DataArray):
+        with pytest.raises(ValueError, match="equal size"):
+            ops.symmetrize(non_square_matrix)
+
+    def test_symmetrize_batched(self, batched_matrix: xr.DataArray):
+        result = ops.symmetrize(batched_matrix)
+        assert result.dims == batched_matrix.dims
+        for i in range(result.sizes["batch"]):
+            batch_result = result.isel(batch=i).values
+            np.testing.assert_allclose(batch_result, batch_result.T)
+
+    def test_symmetrize_does_not_mutate_input(self, square_matrix: xr.DataArray):
+        original = square_matrix.values.copy()
+        _ = ops.symmetrize(square_matrix)
+        np.testing.assert_array_equal(square_matrix.values, original)
