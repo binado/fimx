@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Hashable, Mapping, Sequence
+from collections.abc import Mapping, Sequence
 
 import numpy as np
 import xarray as xr
@@ -45,7 +45,7 @@ class FisherMatrix:
     def __init__(
         self,
         data: np.ndarray | xr.DataArray | xr.Dataset,
-        parameters: Sequence[str] | None = None,
+        parameters: Sequence[str] | str | None = None,
         *,
         labels: Sequence[str] | Mapping[str, str] | None = None,
         units: Sequence[str | None] | Mapping[str, str | None] | None = None,
@@ -53,26 +53,9 @@ class FisherMatrix:
         | Mapping[str, float | None]
         | ArrayLike
         | None = None,
-        parameter_dims: ParameterDims | None = None,
-        batch_dim: Hashable | None = None,
         dims: DatasetDims | None = None,
     ) -> None:
         self._cache: xr.Dataset = xr.Dataset()
-        explicit_parameter_dims = parameter_dims is not None or dims is not None
-
-        if dims is not None:
-            if parameter_dims is not None or batch_dim is not None:
-                raise ValueError("Use dims or parameter_dims/batch_dim, not both.")
-            parameter_dims = dims.matrix_dims
-            parameter_dim = dims.parameter
-            batch_dim = dims.batch
-        else:
-            parameter_dim = DEFAULT_DIMS.parameter
-
-        if parameter_dims is None:
-            parameter_dims = DEFAULT_DIMS.parameter_dims
-        if batch_dim is None:
-            batch_dim = DEFAULT_DIMS.batch
 
         if isinstance(data, xr.Dataset):
             ds = data.copy()
@@ -81,13 +64,37 @@ class FisherMatrix:
             da = ds[FISHER_VAR]
             if da.ndim < 2:
                 raise ValueError("Fisher matrix must be at least 2D.")
-            if explicit_parameter_dims:
-                if not all(dim in da.dims for dim in parameter_dims):
+            if dims is not None:
+                if not all(dim in da.dims for dim in dims.matrix_dims):
                     raise ValueError("Row/col dims are missing from fisher_matrix.")
+                resolved_dims = dims
+            elif isinstance(parameters, str):
+                resolved_dims = DatasetDims.infer_from_data(da, parameters)
             else:
-                parameter_dims = (da.dims[-2], da.dims[-1])
-
+                resolved_dims = DatasetDims(
+                    row=da.dims[-2],
+                    col=da.dims[-1],
+                    parameter=DEFAULT_DIMS.parameter,
+                    batch=DEFAULT_DIMS.batch,
+                )
+            if dims is None and resolved_dims.parameter in da.coords:
+                if resolved_dims.parameter not in da.dims:
+                    resolved_dims = DatasetDims(
+                        row=resolved_dims.row,
+                        col=resolved_dims.col,
+                        parameter=resolved_dims.row,
+                        batch=resolved_dims.batch,
+                    )
+            parameter_dims = resolved_dims.matrix_dims
+            parameter_dim = resolved_dims.parameter
+            batch_dim = resolved_dims.batch
             da = stack_batches(da, parameter_dims=parameter_dims, batch_dim=batch_dim)
+            if isinstance(parameters, str):
+                if parameters not in da.coords:
+                    raise ValueError(
+                        f"Missing coordinate '{parameters}' for fisher_matrix."
+                    )
+                parameters = list(da.coords[parameters].values)
             if parameters is None:
                 parameters = self._extract_parameters_from_da(da, parameter_dims)
             da = self._ensure_parameter_coords(da, list(parameters), parameter_dims)
@@ -98,23 +105,52 @@ class FisherMatrix:
             da = data
             if da.ndim < 2:
                 raise ValueError("Fisher matrix must be at least 2D.")
-            if explicit_parameter_dims:
-                if not all(dim in da.dims for dim in parameter_dims):
+            if dims is not None:
+                if not all(dim in da.dims for dim in dims.matrix_dims):
                     raise ValueError("Row/col dims are missing from DataArray.")
+                resolved_dims = dims
+            elif isinstance(parameters, str):
+                resolved_dims = DatasetDims.infer_from_data(da, parameters)
             else:
-                parameter_dims = (da.dims[-2], da.dims[-1])
-
+                resolved_dims = DatasetDims(
+                    row=da.dims[-2],
+                    col=da.dims[-1],
+                    parameter=DEFAULT_DIMS.parameter,
+                    batch=DEFAULT_DIMS.batch,
+                )
+            if dims is None and resolved_dims.parameter in da.coords:
+                if resolved_dims.parameter not in da.dims:
+                    resolved_dims = DatasetDims(
+                        row=resolved_dims.row,
+                        col=resolved_dims.col,
+                        parameter=resolved_dims.row,
+                        batch=resolved_dims.batch,
+                    )
+            parameter_dims = resolved_dims.matrix_dims
+            parameter_dim = resolved_dims.parameter
+            batch_dim = resolved_dims.batch
             da = stack_batches(da, parameter_dims=parameter_dims, batch_dim=batch_dim)
+            if isinstance(parameters, str):
+                if parameters not in da.coords:
+                    raise ValueError(
+                        f"Missing coordinate '{parameters}' for DataArray."
+                    )
+                parameters = list(da.coords[parameters].values)
             if parameters is None:
                 parameters = self._extract_parameters_from_da(da, parameter_dims)
             da = self._ensure_parameter_coords(da, list(parameters), parameter_dims)
             ds = xr.Dataset({FISHER_VAR: da}, coords={parameter_dim: list(parameters)})
             self._dataset = ds
         else:
-            if parameters is None:
+            if parameters is None or isinstance(parameters, str):
                 raise ValueError(
                     "parameters are required when data is not an xarray object."
                 )
+            if dims is None:
+                raise ValueError("dims are required when data is not an xarray object.")
+            parameter_dims = dims.matrix_dims
+            parameter_dim = dims.parameter
+            batch_dim = dims.batch
             da = build_dataarray_from_array(
                 np.asarray(data),
                 list(parameters),
@@ -508,8 +544,7 @@ class FisherMatrix:
         cls,
         path: str,
         *,
-        parameter_dims: ParameterDims | None = None,
-        batch_dim: Hashable | None = None,
+        parameters: Sequence[str] | str | None = None,
         dims: DatasetDims | None = None,
     ) -> "FisherMatrix":
         if path.endswith(".zarr"):
@@ -518,10 +553,8 @@ class FisherMatrix:
             ds = xr.open_dataset(path)
             if FISHER_VAR not in ds and len(ds.data_vars) == 1:
                 da = xr.open_dataarray(path)
-                return cls(
-                    da, parameter_dims=parameter_dims, batch_dim=batch_dim, dims=dims
-                )
-        return cls(ds, parameter_dims=parameter_dims, batch_dim=batch_dim, dims=dims)
+                return cls(da, parameters=parameters, dims=dims)
+        return cls(ds, parameters=parameters, dims=dims)
 
     def _split_parameters(self, selected: Sequence[str]) -> tuple[list[str], list[str]]:
         selected_set = set(selected)
