@@ -4,7 +4,6 @@ import xarray as xr
 
 from fishy.fisher import (
     COVARIANCE_VAR,
-    DEFAULT_BATCH_DIM,
     DEFAULT_COL_DIM,
     DEFAULT_ROW_DIM,
     FISHER_VAR,
@@ -123,14 +122,11 @@ class TestFisherMatrixInit:
     ) -> None:
         fm = FisherMatrix(batched_fisher_values, parameters)
 
-        assert fm._batch_dim == DEFAULT_BATCH_DIM
+        assert fm.batch_dims == ("batch",)
         assert fm.data.ndim == 3
-        assert fm.data.sizes[DEFAULT_BATCH_DIM] == 2
+        assert fm.data.sizes["batch"] == 2
 
-    @pytest.mark.xfail(
-        reason="stack_batches puts batch dim last instead of first, breaking matrix dim detection"
-    )
-    def test_init_stacks_multiple_batch_dims(
+    def test_init_preserves_multiple_batch_dims(
         self, parameters: list[str], fisher_values: np.ndarray
     ) -> None:
         batch1, batch2 = 2, 3
@@ -145,17 +141,17 @@ class TestFisherMatrixInit:
         )
         fm = FisherMatrix(da)
 
-        assert fm._batch_dim == DEFAULT_BATCH_DIM
-        assert fm.data.sizes[DEFAULT_BATCH_DIM] == batch1 * batch2
+        assert fm.batch_dims == ("batch1", "batch2")
+        assert fm.data.sizes["batch1"] == batch1
+        assert fm.data.sizes["batch2"] == batch2
 
-    def test_init_with_custom_dims(
+    def test_init_with_custom_parameter_dim(
         self, parameters: list[str], fisher_values: np.ndarray
     ) -> None:
         fm = FisherMatrix(
             fisher_values,
             parameters,
             parameter_dim="params",
-            batch_dim="samples",
         )
 
         assert fm._parameter_dim == "params"
@@ -233,11 +229,11 @@ class TestCovariance:
         cov = batched_fisher_matrix.covariance()
 
         assert cov.ndim == 3
-        assert cov.sizes[DEFAULT_BATCH_DIM] == 2
+        assert cov.sizes["batch"] == 2
 
         for i in range(2):
-            fisher_i = batched_fisher_matrix.data.isel({DEFAULT_BATCH_DIM: i}).values
-            cov_i = cov.isel({DEFAULT_BATCH_DIM: i}).values
+            fisher_i = batched_fisher_matrix.data.isel({"batch": i}).values
+            cov_i = cov.isel({"batch": i}).values
             product = fisher_i @ cov_i
             np.testing.assert_allclose(product, np.eye(3), atol=1e-10)
 
@@ -289,7 +285,7 @@ class TestMarginalize:
 
         assert result.parameters == ["a", "b"]
         assert result.data.ndim == 3
-        assert result.data.sizes[DEFAULT_BATCH_DIM] == 2
+        assert result.data.sizes["batch"] == 2
 
     def test_marginalize_result_has_larger_errors(
         self, fisher_matrix: FisherMatrix
@@ -342,7 +338,7 @@ class TestFix:
 
         assert result.parameters == ["a", "b"]
         assert result.data.ndim == 3
-        assert result.data.sizes[DEFAULT_BATCH_DIM] == 2
+        assert result.data.sizes["batch"] == 2
 
     def test_fix_result_has_smaller_errors(self, fisher_matrix: FisherMatrix) -> None:
         original_cov = fisher_matrix.covariance()
