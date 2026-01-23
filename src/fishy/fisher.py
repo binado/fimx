@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import functools
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
 
 import numpy as np
 import xarray as xr
@@ -21,12 +20,15 @@ from .diagnostics import (
     min_eigenvalues,
     min_max_eigenvalues,
 )
-from .dimensions import DatasetDims, MatrixDims
+from .dimensions import MatrixDims
 from .inversion import invert_matrices
 from .metadata import normalize_metadata_array
 from .sampling import sample_from_fisher
 
-DEFAULT_DIMS = DatasetDims()
+DEFAULT_ROW_DIM = "row"
+DEFAULT_COL_DIM = "col"
+DEFAULT_PARAMETER_DIM = "parameter"
+DEFAULT_BATCH_DIM = "batch"
 
 FISHER_VAR = "fisher_matrix"
 COVARIANCE_VAR = "covariance"
@@ -41,40 +43,6 @@ def _is_missing(value: object) -> bool:
     if isinstance(value, (float, np.floating)) and np.isnan(value):
         return True
     return False
-
-
-@dataclass
-class _NormalizedInput:
-    """Intermediate result from normalizing input data."""
-
-    dataset: xr.Dataset
-    dims: DatasetDims
-
-
-def _resolve_dims(
-    da: xr.DataArray,
-    dims: DatasetDims | None,
-) -> DatasetDims:
-    """Resolve DatasetDims from a DataArray.
-
-    Matrix dimensions are always the last two dimensions of the array.
-    """
-    row, col = da.dims[-2], da.dims[-1]
-
-    if dims is not None:
-        if dims.matrix_dims != (row, col):
-            raise ValueError(
-                f"Provided dims {dims.matrix_dims} do not match "
-                f"data's last two dimensions {(row, col)}."
-            )
-        return dims
-
-    return DatasetDims(
-        row=row,
-        col=col,
-        parameter=DEFAULT_DIMS.parameter,
-        batch=DEFAULT_DIMS.batch,
-    )
 
 
 def _extract_parameters(
@@ -114,18 +82,15 @@ def _normalize_fisher_into_dataset(
     ds: xr.Dataset,
     da: xr.DataArray,
     parameters: Sequence[str] | str | None,
-    dims: DatasetDims | None,
-) -> _NormalizedInput:
-    """Normalize a Fisher DataArray into a Dataset with resolved dims.
+    batch_dim: str,
+    parameter_dim: str,
+) -> xr.Dataset:
+    """Normalize a Fisher DataArray into a Dataset.
 
     Matrix dimensions are the last two dimensions of the array.
     """
     if da.ndim < 2:
         raise ValueError("Fisher matrix must be at least 2D.")
-
-    resolved_dims = _resolve_dims(da, dims)
-    batch_dim = resolved_dims.batch
-    parameter_dim = resolved_dims.parameter
 
     da = stack_batches(da, batch_dim=batch_dim)
     params = _extract_parameters(da, parameters)
@@ -134,43 +99,50 @@ def _normalize_fisher_into_dataset(
     ds = ds.copy()
     ds[FISHER_VAR] = da
     ds = ds.assign_coords({parameter_dim: params})
-    return _NormalizedInput(dataset=ds, dims=resolved_dims)
+    return ds
 
 
 def _normalize_dataarray(
     da: xr.DataArray,
     parameters: Sequence[str] | str | None,
-    dims: DatasetDims | None,
-) -> _NormalizedInput:
-    """Normalize a DataArray into a Dataset with resolved dims."""
-    return _normalize_fisher_into_dataset(xr.Dataset(), da, parameters, dims)
+    batch_dim: str,
+    parameter_dim: str,
+) -> xr.Dataset:
+    """Normalize a DataArray into a Dataset."""
+    return _normalize_fisher_into_dataset(
+        xr.Dataset(), da, parameters, batch_dim, parameter_dim
+    )
 
 
 def _normalize_dataset(
     ds: xr.Dataset,
     parameters: Sequence[str] | str | None,
-    dims: DatasetDims | None,
-) -> _NormalizedInput:
+    batch_dim: str,
+    parameter_dim: str,
+) -> xr.Dataset:
     """Normalize a Dataset with a fisher_matrix variable."""
     if FISHER_VAR not in ds:
         raise ValueError("Dataset must contain a fisher_matrix variable.")
-    return _normalize_fisher_into_dataset(ds, ds[FISHER_VAR], parameters, dims)
+    return _normalize_fisher_into_dataset(
+        ds, ds[FISHER_VAR], parameters, batch_dim, parameter_dim
+    )
 
 
 def _normalize_ndarray(
     data: np.ndarray,
     parameters: Sequence[str],
-    dims: DatasetDims,
-) -> _NormalizedInput:
+    matrix_dims: MatrixDims,
+    batch_dim: str,
+    parameter_dim: str,
+) -> xr.Dataset:
     """Normalize a numpy array into a Dataset."""
     da = build_dataarray_from_array(
         data,
         list(parameters),
-        matrix_dims=dims.matrix_dims,
-        batch_dim=dims.batch,
+        matrix_dims=matrix_dims,
+        batch_dim=batch_dim,
     )
-    ds = xr.Dataset({FISHER_VAR: da}, coords={dims.parameter: list(parameters)})
-    return _NormalizedInput(dataset=ds, dims=dims)
+    return xr.Dataset({FISHER_VAR: da}, coords={parameter_dim: list(parameters)})
 
 
 class FisherMatrix:
@@ -185,27 +157,32 @@ class FisherMatrix:
         | Mapping[str, float | None]
         | ArrayLike
         | None = None,
-        dims: DatasetDims | None = None,
+        parameter_dim: str = DEFAULT_PARAMETER_DIM,
+        batch_dim: str = DEFAULT_BATCH_DIM,
     ) -> None:
         self._cache: xr.Dataset = xr.Dataset()
+        self._parameter_dim = parameter_dim
 
         if isinstance(data, xr.Dataset):
-            normalized = _normalize_dataset(data, parameters, dims)
+            self._dataset = _normalize_dataset(
+                data, parameters, batch_dim, parameter_dim
+            )
         elif isinstance(data, xr.DataArray):
-            normalized = _normalize_dataarray(data, parameters, dims)
+            self._dataset = _normalize_dataarray(
+                data, parameters, batch_dim, parameter_dim
+            )
         else:
             if parameters is None or isinstance(parameters, str):
                 raise ValueError(
                     "parameters are required when data is not an xarray object."
                 )
-            if dims is None:
-                raise ValueError("dims are required when data is not an xarray object.")
-            normalized = _normalize_ndarray(np.asarray(data), parameters, dims)
+            matrix_dims = (DEFAULT_ROW_DIM, DEFAULT_COL_DIM)
+            self._dataset = _normalize_ndarray(
+                np.asarray(data), parameters, matrix_dims, batch_dim, parameter_dim
+            )
 
-        self._dataset = normalized.dataset
-        self._dims = normalized.dims
-        self._batch_dim = (
-            self._dims.batch if self._dataset[FISHER_VAR].ndim > 2 else None
+        self._batch_dim: str | None = (
+            batch_dim if self._dataset[FISHER_VAR].ndim > 2 else None
         )
         self._sync_metadata(labels=labels, units=units, fiducials=fiducials)
 
@@ -219,15 +196,12 @@ class FisherMatrix:
 
     @property
     def parameters(self) -> list[str]:
-        return self._dataset[FISHER_VAR].coords[self._dims.row].values.tolist()
+        row_dim = self.data.dims[-2]
+        return self._dataset[FISHER_VAR].coords[row_dim].values.tolist()
 
     @property
     def matrix_dims(self) -> MatrixDims:
         return (self.data.dims[-2], self.data.dims[-1])
-
-    @property
-    def dataset_dims(self) -> DatasetDims:
-        return self._dims
 
     @property
     def labels(self) -> xr.DataArray | None:
@@ -303,7 +277,7 @@ class FisherMatrix:
 
     def marginalized_errors(self, method: str = "cholesky") -> xr.DataArray:
         cov = self.covariance(method=method)
-        row, col = self.dataset_dims.matrix_dims
+        row, col = self.matrix_dims
         return cov.pipe(np.diagonal, axis1=cov.coords)
 
     def correlation(self, method: str = "cholesky") -> xr.DataArray:
@@ -377,7 +351,7 @@ class FisherMatrix:
         if not keep:
             raise ValueError("Cannot marginalize all parameters.")
 
-        row_dim, col_dim = self._dims.row, self._dims.col
+        row_dim, col_dim = self.matrix_dims
         f_kk = self.data.sel({row_dim: keep, col_dim: keep})
         f_kd = self.data.sel({row_dim: keep, col_dim: drop})
         f_dd = self.data.sel({row_dim: drop, col_dim: drop})
@@ -395,7 +369,7 @@ class FisherMatrix:
         if not keep:
             raise ValueError("Cannot fix all parameters.")
 
-        row_dim, col_dim = self._dims.matrix_dims
+        row_dim, col_dim = self.matrix_dims
         reduced_da = self.data.sel({row_dim: keep, col_dim: keep})
         return self._new_from_values(reduced_da.values, keep)
 
@@ -438,7 +412,7 @@ class FisherMatrix:
         return self._add_dataarrays(self.data, prior, other_dataset=other_dataset)
 
     def __add__(self, other: "FisherMatrix") -> "FisherMatrix":
-        if self._dims.matrix_dims != other._dims.matrix_dims:
+        if self.matrix_dims != other.matrix_dims:
             raise ValueError("Row/col dims must match to add Fisher matrices.")
         return self._add_dataarrays(self.data, other.data, other_dataset=other.dataset)
 
@@ -470,7 +444,7 @@ class FisherMatrix:
             deviation = fiducial - stored
 
         errors = self.marginalized_errors(method=method)
-        sigma = errors.sel({self._dims.parameter: parameter}).values
+        sigma = errors.sel({self._parameter_dim: parameter}).values
         return self._scalar_dataarray(np.abs(deviation) / sigma)
 
     def sample(self, num_samples: int, *, method: str = "cholesky") -> xr.DataArray:
@@ -481,9 +455,9 @@ class FisherMatrix:
         rng = np.random.default_rng()
         samples = sample_from_fisher(values, num_samples, rng)
 
-        dims = ("sample", self._dims.parameter)
+        dims = ("sample", self._parameter_dim)
         coords = {
-            self._dims.parameter: self.parameters,
+            self._parameter_dim: self.parameters,
             "sample": np.arange(num_samples),
         }
         if self._batch_dim is not None:
@@ -496,7 +470,7 @@ class FisherMatrix:
     ) -> str:
         if fiducial is None:
             fiducial = self._metadata_value(self.fiducials, parameter)
-        sigma = self.marginalized_errors().sel({self._dims.parameter: parameter}).values
+        sigma = self.marginalized_errors().sel({self._parameter_dim: parameter}).values
         label = self._metadata_value(self.labels, parameter) or parameter
         if use_latex:
             return f"${label} = {fiducial} \\pm {sigma}$"
@@ -531,7 +505,7 @@ class FisherMatrix:
             fid = self._metadata_value(self.fiducials, name)
             if fiducials is not None and name in fiducials:
                 fid = fiducials[name]
-            err = errors.sel({self._dims.parameter: name}).values
+            err = errors.sel({self._parameter_dim: name}).values
             unit = self._metadata_value(self.units, name)
             if units is not None and name in units:
                 unit = units[name]
@@ -580,7 +554,8 @@ class FisherMatrix:
         path: str,
         *,
         parameters: Sequence[str] | str | None = None,
-        dims: DatasetDims | None = None,
+        parameter_dim: str = DEFAULT_PARAMETER_DIM,
+        batch_dim: str = DEFAULT_BATCH_DIM,
     ) -> "FisherMatrix":
         if path.endswith(".zarr"):
             ds = xr.open_dataset(path)
@@ -588,8 +563,15 @@ class FisherMatrix:
             ds = xr.open_dataset(path)
             if FISHER_VAR not in ds and len(ds.data_vars) == 1:
                 da = xr.open_dataarray(path)
-                return cls(da, parameters=parameters, dims=dims)
-        return cls(ds, parameters=parameters, dims=dims)
+                return cls(
+                    da,
+                    parameters=parameters,
+                    parameter_dim=parameter_dim,
+                    batch_dim=batch_dim,
+                )
+        return cls(
+            ds, parameters=parameters, parameter_dim=parameter_dim, batch_dim=batch_dim
+        )
 
     def _split_parameters(self, selected: Sequence[str]) -> tuple[list[str], list[str]]:
         selected_set = set(selected)
@@ -626,8 +608,8 @@ class FisherMatrix:
         return build_matrix_dataarray(
             values,
             parameters,
-            matrix_dims=self._dims.matrix_dims,
-            batch_dim=self._batch_dim or "batch",
+            matrix_dims=self.matrix_dims,
+            batch_dim=self._batch_dim or DEFAULT_BATCH_DIM,
             batch_coords=batch_coords,
         )
 
@@ -638,8 +620,8 @@ class FisherMatrix:
         return build_vector_dataarray(
             values,
             parameters,
-            parameter_dim=self._dims.parameter,
-            batch_dim=self._batch_dim or "batch",
+            parameter_dim=self._parameter_dim,
+            batch_dim=self._batch_dim or DEFAULT_BATCH_DIM,
             batch_coords=batch_coords,
         )
 
@@ -647,7 +629,7 @@ class FisherMatrix:
         batch_coords = self._get_batch_coords()
         return build_scalar_dataarray(
             values,
-            batch_dim=self._batch_dim or "batch",
+            batch_dim=self._batch_dim or DEFAULT_BATCH_DIM,
             batch_coords=batch_coords,
         )
 
@@ -660,13 +642,13 @@ class FisherMatrix:
     ) -> xr.Dataset:
         """Build a Dataset with Fisher matrix and merged metadata."""
         params = list(parameters)
-        ds = xr.Dataset({FISHER_VAR: matrix}, coords={self._dims.parameter: params})
+        ds = xr.Dataset({FISHER_VAR: matrix}, coords={self._parameter_dim: params})
         merged = self._merge_metadata_arrays(params, other_dataset=other_dataset)
         for key, arr in merged.items():
             ds[key] = xr.DataArray(
                 arr,
-                dims=(self._dims.parameter,),
-                coords={self._dims.parameter: params},
+                dims=(self._parameter_dim,),
+                coords={self._parameter_dim: params},
             )
         return ds
 
@@ -675,7 +657,11 @@ class FisherMatrix:
     ) -> "FisherMatrix":
         data = self._matrix_dataarray(values, parameters)
         ds = self._build_dataset_with_metadata(data, parameters)
-        return FisherMatrix(ds, dims=self._dims)
+        return FisherMatrix(
+            ds,
+            parameter_dim=self._parameter_dim,
+            batch_dim=self._batch_dim or DEFAULT_BATCH_DIM,
+        )
 
     def _add_dataarrays(
         self,
@@ -688,11 +674,16 @@ class FisherMatrix:
             left, right, join="outer", fill_value=0.0
         )
         summed = aligned_left + aligned_right
-        params = list(summed.coords[self._dims.row].values)
+        row_dim = summed.dims[-2]
+        params = list(summed.coords[row_dim].values)
         ds = self._build_dataset_with_metadata(
             summed, params, other_dataset=other_dataset
         )
-        return FisherMatrix(ds, dims=self._dims)
+        return FisherMatrix(
+            ds,
+            parameter_dim=self._parameter_dim,
+            batch_dim=self._batch_dim or DEFAULT_BATCH_DIM,
+        )
 
     def _diagonal_prior(self, diagonal: Mapping[str, float]) -> xr.DataArray:
         params = self.parameters
@@ -783,16 +774,16 @@ class FisherMatrix:
             return
         self._dataset[key] = xr.DataArray(
             values,
-            dims=(self._dims.parameter,),
-            coords={self._dims.parameter: self.parameters},
+            dims=(self._parameter_dim,),
+            coords={self._parameter_dim: self.parameters},
         )
 
     def _metadata_value(self, da: xr.DataArray | None, parameter: str) -> object | None:
         if da is None:
             return None
-        if self._dims.parameter not in da.dims:
+        if self._parameter_dim not in da.dims:
             raise ValueError("Metadata arrays must use the parameter dimension.")
-        value = da.sel({self._dims.parameter: parameter}).item()
+        value = da.sel({self._parameter_dim: parameter}).item()
         if _is_missing(value):
             return None
         return value
@@ -807,10 +798,10 @@ class FisherMatrix:
         if key not in ds:
             return None
         da = ds[key]
-        if self._dims.parameter not in da.dims:
+        if self._parameter_dim not in da.dims:
             raise ValueError(f"Metadata variable {key} must use parameter dim.")
         target = self.parameters if parameters is None else list(parameters)
-        values = da.reindex({self._dims.parameter: target}).values
+        values = da.reindex({self._parameter_dim: target}).values
         return np.asarray(values)
 
     def _merge_metadata_arrays(
@@ -850,12 +841,12 @@ class FisherMatrix:
     ) -> xr.DataArray:
         if da.ndim != 1:
             raise ValueError("Metadata arrays must be 1D.")
-        if self._dims.parameter not in da.dims:
+        if self._parameter_dim not in da.dims:
             raise ValueError("Metadata arrays must use the parameter dimension.")
-        values = da.reindex({self._dims.parameter: self.parameters}).values.tolist()
+        values = da.reindex({self._parameter_dim: self.parameters}).values.tolist()
         values = [np.nan if value is None else value for value in values]
         return xr.DataArray(
             np.asarray(values, dtype=dtype),
-            dims=(self._dims.parameter,),
-            coords={self._dims.parameter: self.parameters},
+            dims=(self._parameter_dim,),
+            coords={self._parameter_dim: self.parameters},
         )
