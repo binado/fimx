@@ -15,6 +15,15 @@ def _ensure_no_dim_collision(da: xr.DataArray, dim: Hashable) -> None:
         raise ValueError(f"Dimension '{dim}' already exists in DataArray")
 
 
+def _canonicalize_dims(da: xr.DataArray, row: Hashable, col: Hashable) -> xr.DataArray:
+    if row not in da.dims:
+        raise ValueError(f"Dimension '{row}' not found in DataArray")
+    if col not in da.dims:
+        raise ValueError(f"Dimension '{col}' not found in DataArray")
+    batch_dims = tuple(dim for dim in da.dims if dim not in (row, col))
+    return da.transpose(*batch_dims, row, col)
+
+
 def _get_matrix_dims(da: xr.DataArray) -> tuple[Hashable, Hashable]:
     _ensure_dims(da)
     dims = da.dims
