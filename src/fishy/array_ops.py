@@ -4,8 +4,8 @@ from collections.abc import Hashable, Sequence
 from typing import TypeAlias
 
 import numpy as np
-from numpy.typing import ArrayLike
 import xarray as xr
+from numpy.typing import ArrayLike
 
 MatrixDims: TypeAlias = tuple[Hashable, Hashable]
 
