@@ -57,8 +57,7 @@ def _reshape_batch_dims(array: np.ndarray) -> np.ndarray:
         raise ValueError("Data must be at least 2D.")
     if array.ndim == 2:
         return array
-    batch_size = int(np.prod(array.shape[:-2]))
-    return array.reshape(batch_size, array.shape[-2], array.shape[-1])
+    return array.reshape(-1, array.shape[-2], array.shape[-1])
 
 
 def _ensure_batch_coords(batch_coords: ArrayLike | None, batch_size: int) -> np.ndarray:
