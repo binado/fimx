@@ -10,41 +10,6 @@ import xarray as xr
 MatrixDims: TypeAlias = tuple[Hashable, Hashable]
 
 
-def stack_batches(
-    da: xr.DataArray,
-    *,
-    batch_dim: Hashable = "batch",
-) -> xr.DataArray:
-    """Stack all non-matrix dimensions into a single batch dimension.
-
-    Matrix dimensions are assumed to be the last two dimensions of the array.
-
-    Parameters
-    ----------
-    da : xr.DataArray
-        Input array with matrix dimensions as the last two dimensions.
-    batch_dim : Hashable
-        Name for the stacked batch dimension.
-
-    Returns
-    -------
-    xr.DataArray
-        Array with at most 3 dimensions: (batch, row, col) or (row, col).
-    """
-    if da.ndim < 2:
-        raise ValueError("DataArray must have at least 2 dimensions.")
-    batch_dims = list(da.dims[:-2])
-    if not batch_dims:
-        return da
-    if len(batch_dims) == 1:
-        if batch_dims[0] != batch_dim:
-            return da.rename({batch_dims[0]: batch_dim})
-        return da
-    if batch_dim in da.dims and batch_dim not in batch_dims:
-        raise ValueError("batch_dim conflicts with existing dimension names.")
-    return da.stack({batch_dim: batch_dims})
-
-
 def build_dataarray_from_array(
     array: np.ndarray,
     parameters: Sequence[str],
