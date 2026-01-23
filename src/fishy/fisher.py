@@ -53,57 +53,56 @@ class _NormalizedInput:
 
 def _resolve_dims(
     da: xr.DataArray,
-    parameters: Sequence[str] | str | None,
     dims: DatasetDims | None,
 ) -> DatasetDims:
-    """Resolve DatasetDims from a DataArray."""
+    """Resolve DatasetDims from a DataArray.
+
+    Matrix dimensions are always the last two dimensions of the array.
+    """
+    row, col = da.dims[-2], da.dims[-1]
+
     if dims is not None:
-        if not all(dim in da.dims for dim in dims.matrix_dims):
-            raise ValueError("Row/col dims are missing from data.")
+        if dims.matrix_dims != (row, col):
+            raise ValueError(
+                f"Provided dims {dims.matrix_dims} do not match "
+                f"data's last two dimensions {(row, col)}."
+            )
         return dims
 
-    if isinstance(parameters, str):
-        return DatasetDims.infer_from_data(da, parameters)
-
-    resolved = DatasetDims(
-        row=da.dims[-2],
-        col=da.dims[-1],
+    return DatasetDims(
+        row=row,
+        col=col,
         parameter=DEFAULT_DIMS.parameter,
         batch=DEFAULT_DIMS.batch,
     )
-    if resolved.parameter in da.coords and resolved.parameter not in da.dims:
-        resolved = DatasetDims(
-            row=resolved.row,
-            col=resolved.col,
-            parameter=resolved.row,
-            batch=resolved.batch,
-        )
-    return resolved
 
 
 def _extract_parameters(
     da: xr.DataArray,
     parameters: Sequence[str] | str | None,
-    matrix_dims: MatrixDims,
 ) -> list[str]:
-    """Extract parameter names from DataArray or parameters argument."""
+    """Extract parameter names from DataArray or parameters argument.
+
+    Matrix dimensions are the last two dimensions of the array.
+    """
     if isinstance(parameters, str):
         if parameters not in da.coords:
             raise ValueError(f"Missing coordinate '{parameters}' for data.")
         return list(da.coords[parameters].values)
     if parameters is not None:
         return list(parameters)
-    row_dim = matrix_dims[0]
+    row_dim = da.dims[-2]
     if row_dim not in da.coords:
         raise ValueError(f"Missing coordinate for row dim {row_dim}.")
     return list(da.coords[row_dim].values)
 
 
-def _ensure_parameter_coords(
-    da: xr.DataArray, parameters: list[str], matrix_dims: MatrixDims
-) -> xr.DataArray:
-    """Assign parameter coordinates to row and column dimensions."""
-    row_dim, col_dim = matrix_dims
+def _ensure_parameter_coords(da: xr.DataArray, parameters: list[str]) -> xr.DataArray:
+    """Assign parameter coordinates to row and column dimensions.
+
+    Matrix dimensions are the last two dimensions of the array.
+    """
+    row_dim, col_dim = da.dims[-2], da.dims[-1]
     if da.sizes[row_dim] != len(parameters):
         raise ValueError("parameters length must match matrix size.")
     if da.sizes[col_dim] != len(parameters):
@@ -117,18 +116,20 @@ def _normalize_fisher_into_dataset(
     parameters: Sequence[str] | str | None,
     dims: DatasetDims | None,
 ) -> _NormalizedInput:
-    """Normalize a Fisher DataArray into a Dataset with resolved dims."""
+    """Normalize a Fisher DataArray into a Dataset with resolved dims.
+
+    Matrix dimensions are the last two dimensions of the array.
+    """
     if da.ndim < 2:
         raise ValueError("Fisher matrix must be at least 2D.")
 
-    resolved_dims = _resolve_dims(da, parameters, dims)
-    matrix_dims = resolved_dims.matrix_dims
+    resolved_dims = _resolve_dims(da, dims)
     batch_dim = resolved_dims.batch
     parameter_dim = resolved_dims.parameter
 
-    da = stack_batches(da, matrix_dims=matrix_dims, batch_dim=batch_dim)
-    params = _extract_parameters(da, parameters, matrix_dims)
-    da = _ensure_parameter_coords(da, params, matrix_dims)
+    da = stack_batches(da, batch_dim=batch_dim)
+    params = _extract_parameters(da, parameters)
+    da = _ensure_parameter_coords(da, params)
 
     ds = ds.copy()
     ds[FISHER_VAR] = da
@@ -162,17 +163,13 @@ def _normalize_ndarray(
     dims: DatasetDims,
 ) -> _NormalizedInput:
     """Normalize a numpy array into a Dataset."""
-    matrix_dims = dims.matrix_dims
-    batch_dim = dims.batch
-    parameter_dim = dims.parameter
-
     da = build_dataarray_from_array(
         data,
         list(parameters),
-        matrix_dims=matrix_dims,
-        batch_dim=batch_dim,
+        matrix_dims=dims.matrix_dims,
+        batch_dim=dims.batch,
     )
-    ds = xr.Dataset({FISHER_VAR: da}, coords={parameter_dim: list(parameters)})
+    ds = xr.Dataset({FISHER_VAR: da}, coords={dims.parameter: list(parameters)})
     return _NormalizedInput(dataset=ds, dims=dims)
 
 
@@ -226,7 +223,7 @@ class FisherMatrix:
 
     @property
     def matrix_dims(self) -> MatrixDims:
-        return self._dims.matrix_dims
+        return (self.data.dims[-2], self.data.dims[-1])
 
     @property
     def dataset_dims(self) -> DatasetDims:
@@ -306,10 +303,8 @@ class FisherMatrix:
 
     def marginalized_errors(self, method: str = "cholesky") -> xr.DataArray:
         cov = self.covariance(method=method)
-        values = np.asarray(cov.values)
-        diag = np.diagonal(values, axis1=-2, axis2=-1)
-        errors = np.sqrt(diag)
-        return self._vector_dataarray(errors, self.parameters)
+        row, col = self.dataset_dims.matrix_dims
+        return cov.pipe(np.diagonal, axis1=cov.coords)
 
     def correlation(self, method: str = "cholesky") -> xr.DataArray:
         cov = self.covariance(method=method)
