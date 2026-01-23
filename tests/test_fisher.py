@@ -114,7 +114,7 @@ class TestFisherMatrixInit:
 
     def test_init_rejects_1d_data(self) -> None:
         da = xr.DataArray([1, 2, 3], dims=["x"], coords={"x": ["a", "b", "c"]})
-        with pytest.raises(ValueError, match="at least 2D"):
+        with pytest.raises(ValueError, match="at least 2 dimensions"):
             FisherMatrix(da)
 
     def test_init_with_batch_dimension(

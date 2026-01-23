@@ -4,10 +4,12 @@ import numpy as np
 import xarray as xr
 from numpy.typing import NDArray
 
+from fishy.exceptions import InsufficientDimsError
 
-def _ensure_dims(da: xr.DataArray) -> None:
-    if da.ndim < 2:
-        raise ValueError("DataArray must have at least two dimensions")
+
+def ensure_dims(da: xr.DataArray, expected: int = 2) -> None:
+    if da.ndim < expected:
+        raise InsufficientDimsError(da, expected=expected)
 
 
 def _ensure_no_dim_collision(da: xr.DataArray, dim: Hashable) -> None:
@@ -15,7 +17,7 @@ def _ensure_no_dim_collision(da: xr.DataArray, dim: Hashable) -> None:
         raise ValueError(f"Dimension '{dim}' already exists in DataArray")
 
 
-def _canonicalize_dims(da: xr.DataArray, row: Hashable, col: Hashable) -> xr.DataArray:
+def canonicalize_dims(da: xr.DataArray, row: Hashable, col: Hashable) -> xr.DataArray:
     if row not in da.dims:
         raise ValueError(f"Dimension '{row}' not found in DataArray")
     if col not in da.dims:
@@ -25,7 +27,7 @@ def _canonicalize_dims(da: xr.DataArray, row: Hashable, col: Hashable) -> xr.Dat
 
 
 def _get_matrix_dims(da: xr.DataArray) -> tuple[Hashable, Hashable]:
-    _ensure_dims(da)
+    ensure_dims(da)
     dims = da.dims
     row, col = dims[-2], dims[-1]
     return row, col
@@ -42,7 +44,7 @@ def _get_matrix_shape(da: xr.DataArray) -> tuple[int, int]:
 
 
 def _ensure_square(da: xr.DataArray) -> None:
-    _ensure_dims(da)
+    ensure_dims(da)
     row_size, col_size = _get_matrix_shape(da)
     if row_size != col_size:
         raise ValueError(
@@ -51,7 +53,7 @@ def _ensure_square(da: xr.DataArray) -> None:
 
 
 def at(da: xr.DataArray, row: Any | None = None, col: Any | None = None, **kwargs):
-    _ensure_dims(da)
+    ensure_dims(da)
     row_dim, col_dim = _get_matrix_dims(da)
     if row is None and col is None:
         raise ValueError("Either row or col must be specified")

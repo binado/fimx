@@ -1,6 +1,33 @@
 """Custom exceptions for the fishy package."""
 
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
 import numpy as np
+import xarray as xr
+
+if TYPE_CHECKING:
+    import numpy.typing as npt
+
+
+class InsufficientDimsError(ValueError):
+    """Raised when a matrix has insufficient dimensions for an operation.
+
+    Attributes
+    ----------
+    shape : tuple[int, ...]
+        The shape of the matrix that failed the operation
+    """
+
+    def __init__(self, data: npt.ArrayLike | xr.DataArray, expected: int) -> None:
+        self.actual_dims = (
+            data.ndim if isinstance(data, xr.DataArray) else np.asarray(data).ndim
+        )
+        self.expected_dims = expected
+        super().__init__(
+            f"Expected array with at least {self.expected_dims} dimensions, got {self.actual_dims}"
+        )
 
 
 class FailedInversionError(Exception):

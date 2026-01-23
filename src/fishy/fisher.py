@@ -60,7 +60,9 @@ def _extract_parameters(
     return list(da.coords[row_dim].values)
 
 
-def _ensure_parameter_coords(da: xr.DataArray, parameters: list[str]) -> xr.DataArray:
+def _ensure_parameter_coords(
+    da: xr.DataArray, parameters: Sequence[str]
+) -> xr.DataArray:
     """Assign parameter coordinates to row and column dimensions.
 
     Matrix dimensions are the last two dimensions of the array.
@@ -83,8 +85,7 @@ def _normalize_fisher_into_dataset(
 
     Matrix dimensions are the last two dimensions of the array.
     """
-    if da.ndim < 2:
-        raise ValueError("Fisher matrix must be at least 2D.")
+    fishy.ops.ensure_dims(da)
 
     params = _extract_parameters(da, parameters)
     da = _ensure_parameter_coords(da, params)
