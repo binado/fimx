@@ -89,7 +89,7 @@ def _normalize_ndarray(
     """Normalize a numpy array into a Dataset."""
     da = build_dataarray_from_array(
         data,
-        list(parameters),
+        parameters,
         matrix_dims=matrix_dims,
         batch_dims=batch_dims,
     )
