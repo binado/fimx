@@ -9,7 +9,11 @@ from numpy.typing import ArrayLike
 
 import fishy.ops
 
-from .array_ops import build_dataarray_from_array
+from .array_ops import (
+    build_dataarray_from_array,
+    normalize_dataarray,
+    normalize_dataset,
+)
 from .diagnostics import (
     Diagnostics,
     condition_numbers,
@@ -75,58 +79,19 @@ def _ensure_parameter_coords(
     return da.assign_coords({row_dim: parameters, col_dim: parameters})
 
 
-def _normalize_fisher_into_dataset(
-    ds: xr.Dataset,
-    da: xr.DataArray,
-    parameters: Sequence[str] | str | None,
-    parameter_dim: str,
-) -> xr.Dataset:
-    """Normalize a Fisher DataArray into a Dataset.
-
-    Matrix dimensions are the last two dimensions of the array.
-    """
-    fishy.ops.ensure_dims(da)
-
-    params = _extract_parameters(da, parameters)
-    da = _ensure_parameter_coords(da, params)
-
-    ds = ds.copy()
-    ds[FISHER_VAR] = da
-    ds = ds.assign_coords({parameter_dim: params})
-    return ds
-
-
-def _normalize_dataarray(
-    da: xr.DataArray,
-    parameters: Sequence[str] | str | None,
-    parameter_dim: str,
-) -> xr.Dataset:
-    """Normalize a DataArray into a Dataset."""
-    return _normalize_fisher_into_dataset(xr.Dataset(), da, parameters, parameter_dim)
-
-
-def _normalize_dataset(
-    ds: xr.Dataset,
-    parameters: Sequence[str] | str | None,
-    parameter_dim: str,
-) -> xr.Dataset:
-    """Normalize a Dataset with a fisher_matrix variable."""
-    if FISHER_VAR not in ds:
-        raise ValueError("Dataset must contain a fisher_matrix variable.")
-    return _normalize_fisher_into_dataset(ds, ds[FISHER_VAR], parameters, parameter_dim)
-
-
 def _normalize_ndarray(
-    data: np.ndarray,
+    data: ArrayLike,
     parameters: Sequence[str],
     matrix_dims: MatrixDims,
     parameter_dim: str,
+    batch_dims: Sequence[str] | None = None,
 ) -> xr.Dataset:
     """Normalize a numpy array into a Dataset."""
     da = build_dataarray_from_array(
         data,
         list(parameters),
         matrix_dims=matrix_dims,
+        batch_dims=batch_dims,
     )
     return xr.Dataset({FISHER_VAR: da}, coords={parameter_dim: list(parameters)})
 
@@ -134,7 +99,7 @@ def _normalize_ndarray(
 class FisherMatrix:
     def __init__(
         self,
-        data: np.ndarray | xr.DataArray | xr.Dataset,
+        data: ArrayLike | xr.DataArray | xr.Dataset,
         parameters: Sequence[str] | str | None = None,
         *,
         labels: Sequence[str] | Mapping[str, str] | None = None,
@@ -143,15 +108,20 @@ class FisherMatrix:
         | Mapping[str, float | None]
         | ArrayLike
         | None = None,
+        batch_dims: Sequence[str] | None = None,
         parameter_dim: str = DEFAULT_PARAMETER_DIM,
     ) -> None:
         self._cache: xr.Dataset = xr.Dataset()
         self._parameter_dim = parameter_dim
 
         if isinstance(data, xr.Dataset):
-            self._dataset = _normalize_dataset(data, parameters, parameter_dim)
+            if FISHER_VAR not in data:
+                raise ValueError("Dataset must contain a fisher_matrix variable.")
+            ds = normalize_dataset(data, FISHER_VAR)
+            da = ds[FISHER_VAR]
         elif isinstance(data, xr.DataArray):
-            self._dataset = _normalize_dataarray(data, parameters, parameter_dim)
+            da = normalize_dataarray(data)
+            ds = None
         else:
             if parameters is None or isinstance(parameters, str):
                 raise ValueError(
@@ -159,8 +129,18 @@ class FisherMatrix:
                 )
             matrix_dims = (DEFAULT_ROW_DIM, DEFAULT_COL_DIM)
             self._dataset = _normalize_ndarray(
-                np.asarray(data), parameters, matrix_dims, parameter_dim
+                data, parameters, matrix_dims, parameter_dim, batch_dims
             )
+            self._sync_metadata(labels=labels, units=units, fiducials=fiducials)
+            return
+
+        params = _extract_parameters(da, parameters)
+        da = _ensure_parameter_coords(da, params)
+        if ds is None:
+            ds = xr.Dataset({FISHER_VAR: da})
+        else:
+            ds = ds.assign({FISHER_VAR: da})
+        self._dataset = ds.assign_coords({parameter_dim: params})
 
         self._sync_metadata(labels=labels, units=units, fiducials=fiducials)
 

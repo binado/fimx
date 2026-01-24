@@ -31,14 +31,6 @@ def normalize_dataset(ds: xr.Dataset, key: Hashable) -> xr.Dataset:
     return ds.assign({key: da_normalized})
 
 
-def _default_batch_dim_names(n_batch: int) -> tuple[Hashable, ...]:
-    if n_batch == 0:
-        return ()
-    if n_batch == 1:
-        return ("batch",)
-    return tuple(f"batch{i}" for i in range(n_batch))
-
-
 def build_dataarray_from_array(
     array: ArrayLike,
     parameters: Sequence[Hashable],

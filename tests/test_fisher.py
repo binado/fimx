@@ -35,7 +35,7 @@ def batched_fisher_values(fisher_values: np.ndarray) -> np.ndarray:
 def batched_fisher_matrix(
     parameters: list[str], batched_fisher_values: np.ndarray
 ) -> FisherMatrix:
-    return FisherMatrix(batched_fisher_values, parameters)
+    return FisherMatrix(batched_fisher_values, parameters, batch_dims=["batch"])
 
 
 class TestFisherMatrixInit:
@@ -120,11 +120,17 @@ class TestFisherMatrixInit:
     def test_init_with_batch_dimension(
         self, parameters: list[str], batched_fisher_values: np.ndarray
     ) -> None:
-        fm = FisherMatrix(batched_fisher_values, parameters)
+        fm = FisherMatrix(batched_fisher_values, parameters, batch_dims=["batch"])
 
         assert fm.batch_dims == ("batch",)
         assert fm.data.ndim == 3
         assert fm.data.sizes["batch"] == 2
+
+    def test_init_with_batch_dimension_requires_batch_dims(
+        self, parameters: list[str], batched_fisher_values: np.ndarray
+    ) -> None:
+        with pytest.raises(ValueError, match="batch_dims must be provided"):
+            FisherMatrix(batched_fisher_values, parameters)
 
     def test_init_preserves_multiple_batch_dims(
         self, parameters: list[str], fisher_values: np.ndarray

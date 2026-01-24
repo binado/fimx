@@ -67,23 +67,23 @@ class TestHelpers:
 
 class TestAt:
     def test_at_row(self, square_matrix: xr.DataArray):
-        result = ops.at(square_matrix, row=0)
+        result = ops.apply_matrix_indexers(square_matrix, row=0)
         expected = square_matrix.isel(row=0)
         xr.testing.assert_equal(result, expected)
 
     def test_at_col(self, square_matrix: xr.DataArray):
-        result = ops.at(square_matrix, col=1)
+        result = ops.apply_matrix_indexers(square_matrix, col=1)
         expected = square_matrix.isel(col=1)
         xr.testing.assert_equal(result, expected)
 
     def test_at_row_and_col(self, square_matrix: xr.DataArray):
-        result = ops.at(square_matrix, row=0, col=1)
+        result = ops.apply_matrix_indexers(square_matrix, row=0, col=1)
         expected = square_matrix.isel(row=0, col=1)
         xr.testing.assert_equal(result, expected)
 
     def test_at_raises_when_neither_specified(self, square_matrix: xr.DataArray):
         with pytest.raises(ValueError, match="Either row or col"):
-            ops.at(square_matrix)
+            ops.apply_matrix_indexers(square_matrix)
 
 
 class TestDiagonal:
