@@ -16,7 +16,6 @@ from .construction import (
     normalize_dataset,
     partition_matrices,
 )
-from .indexing import submatrix
 from .diagnostics import (
     Diagnostics,
     condition_numbers,
@@ -24,6 +23,7 @@ from .diagnostics import (
     min_max_eigenvalues,
 )
 from .dimensions import MatrixDims
+from .indexing import submatrix
 from .inversion import invert_matrices
 from .metadata import normalize_metadata_array
 from .sampling import sample_from_fisher
@@ -45,23 +45,6 @@ def _is_missing(value: object) -> bool:
     if isinstance(value, (float, np.floating)) and np.isnan(value):
         return True
     return False
-
-
-def _normalize_ndarray(
-    data: ArrayLike,
-    parameters: Sequence[str],
-    matrix_dims: MatrixDims,
-    parameter_dim: str,
-    batch_dims: Sequence[str] | None = None,
-) -> xr.Dataset:
-    """Normalize a numpy array into a Dataset."""
-    da = build_dataarray_from_array(
-        data,
-        parameters,
-        matrix_dims=matrix_dims,
-        batch_dims=batch_dims,
-    )
-    return xr.Dataset({FISHER_VAR: da}, coords={parameter_dim: list(parameters)})
 
 
 class FisherMatrix:
@@ -96,11 +79,13 @@ class FisherMatrix:
                     "parameters are required when data is not an xarray object."
                 )
             matrix_dims = (DEFAULT_ROW_DIM, DEFAULT_COL_DIM)
-            self._dataset = _normalize_ndarray(
-                data, parameters, matrix_dims, parameter_dim, batch_dims
+            da = build_dataarray_from_array(
+                data,
+                parameters,
+                matrix_dims=matrix_dims,
+                batch_dims=batch_dims,
             )
-            self._sync_metadata(labels=labels, units=units, fiducials=fiducials)
-            return
+            ds = None
 
         params, _ = get_matrix_coords(da)
         if ds is None:
