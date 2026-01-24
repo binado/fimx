@@ -11,6 +11,17 @@ if TYPE_CHECKING:
     import numpy.typing as npt
 
 
+class MatrixNotSquareError(ValueError):
+    """Raised when a matrix is not square."""
+
+    def __init__(self, data: npt.ArrayLike | xr.DataArray) -> None:
+        total_shape = (
+            data.shape if isinstance(data, xr.DataArray) else np.asarray(data).shape
+        )
+        self.shape = total_shape[:2]
+        super().__init__(f"Expected square matrix, got shape {self.shape}")
+
+
 class InsufficientDimsError(ValueError):
     """Raised when a matrix has insufficient dimensions for an operation.
 

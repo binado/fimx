@@ -1,39 +1,75 @@
 from __future__ import annotations
 
 from collections.abc import Hashable, Sequence
-from typing import TypeAlias
+from typing import TYPE_CHECKING, Mapping, TypeAlias
 
 import numpy as np
 import xarray as xr
-from numpy.typing import ArrayLike
+
+from .utils import ensure_dims, get_matrix_dims, is_square_matrix
+
+if TYPE_CHECKING:
+    from numpy.typing import ArrayLike
 
 MatrixDims: TypeAlias = tuple[Hashable, Hashable]
 
 
+def normalize_dataarray(da: xr.DataArray) -> xr.DataArray:
+    ensure_dims(da, expected=2)
+    is_square_matrix(da, raise_exception=True)
+    row, col = get_matrix_dims(da)
+    coords = da.coords.get(row, da.coords.get(col, None))
+    if coords is None:
+        raise ValueError("Matrix dimensions must be present as coordinates.")
+
+    return da.assign_coords({row: coords, col: coords})
+
+
+def normalize_dataset(ds: xr.Dataset, key: Hashable) -> xr.Dataset:
+    da = ds[key]
+    da_normalized = normalize_dataarray(da)
+    return ds.assign({key: da_normalized})
+
+
+def _default_batch_dim_names(n_batch: int) -> tuple[Hashable, ...]:
+    if n_batch == 0:
+        return ()
+    if n_batch == 1:
+        return ("batch",)
+    return tuple(f"batch{i}" for i in range(n_batch))
+
+
 def build_dataarray_from_array(
-    array: np.ndarray,
-    parameters: Sequence[str],
-    *,
-    matrix_dims: MatrixDims = ("row", "col"),
-    batch_dim: Hashable = "batch",
+    array: ArrayLike,
+    parameters: Sequence[Hashable],
+    matrix_dims: tuple[Hashable, Hashable],
+    batch_dims: Sequence[Hashable] | None = None,
+    batch_coords: Mapping[Hashable, ArrayLike | xr.Coordinates] | None = None,
+    **kwargs,
 ) -> xr.DataArray:
-    array = _reshape_batch_dims(np.asarray(array))
-    if array.shape[-1] != array.shape[-2]:
-        raise ValueError("Fisher matrix must be square.")
+    array = np.asarray(array)
+    ensure_dims(array, expected=2)
+    is_square_matrix(array, raise_exception=True)
     if array.shape[-1] != len(parameters):
         raise ValueError("parameters length must match matrix size.")
 
-    if array.ndim == 2:
-        dims = matrix_dims
-        coords = {matrix_dims[0]: parameters, matrix_dims[1]: parameters}
-    else:
-        dims = (batch_dim,) + matrix_dims
-        coords = {
-            batch_dim: np.arange(array.shape[0]),
-            matrix_dims[0]: parameters,
-            matrix_dims[1]: parameters,
-        }
-    return xr.DataArray(array, dims=dims, coords=coords)
+    expected_batch_dims = array.ndim - 2
+    if batch_dims is None and expected_batch_dims > 0:
+        raise ValueError(
+            "batch_dims must be provided for arrays with more than 2 dimensions."
+        )
+    batch_dims_as_tuple = tuple(batch_dims or ())
+    if len(batch_dims_as_tuple) != expected_batch_dims:
+        raise ValueError("batch_dims length must match array batch dimensions.")
+
+    dims = batch_dims_as_tuple + matrix_dims
+    coords: dict[Hashable, Sequence[Hashable] | ArrayLike | xr.Coordinates] = {
+        dim: parameters for dim in matrix_dims
+    }
+    if batch_coords is not None:
+        coords.update({dim: batch_coords[dim] for dim in batch_dims_as_tuple})
+
+    return xr.DataArray(array, dims=dims, coords=coords, **kwargs)
 
 
 def partition_matrices(
@@ -50,147 +86,3 @@ def submatrix(values: np.ndarray, rows: list[int], cols: list[int]) -> np.ndarra
     if values.ndim == 2:
         return values[np.ix_(rows, cols)]
     return np.take(np.take(values, rows, axis=1), cols, axis=2)
-
-
-def _reshape_batch_dims(array: np.ndarray) -> np.ndarray:
-    if array.ndim < 2:
-        raise ValueError("Data must be at least 2D.")
-    if array.ndim == 2:
-        return array
-    return array.reshape(-1, array.shape[-2], array.shape[-1])
-
-
-def _ensure_batch_coords(batch_coords: ArrayLike | None, batch_size: int) -> np.ndarray:
-    """Ensure batch coordinates are provided, using integer indices as fallback.
-
-    Parameters
-    ----------
-    batch_coords : ArrayLike | None
-        User-provided batch coordinates, or None
-    batch_size : int
-        Size of the batch dimension
-
-    Returns
-    -------
-    np.ndarray
-        Batch coordinates array
-    """
-    if batch_coords is None:
-        return np.arange(batch_size)
-    return np.asarray(batch_coords)
-
-
-def build_matrix_dataarray(
-    values: np.ndarray,
-    parameters: Sequence[str],
-    *,
-    matrix_dims: MatrixDims = ("row", "col"),
-    batch_dim: Hashable = "batch",
-    batch_coords: ArrayLike | None = None,
-) -> xr.DataArray:
-    """Build a DataArray for matrix-shaped values with automatic batch detection.
-
-    Parameters
-    ----------
-    values : np.ndarray
-        Array of shape (n, n) or (batch, n, n)
-    parameters : Sequence[str]
-        Parameter names for the matrix dimensions
-    matrix_dims : MatrixDims
-        Names for the parameter dimensions
-    batch_dim : Hashable
-        Name for the batch dimension (used only if values has batch dims)
-    batch_coords : Sequence | None
-        Coordinates for the batch dimension (if None, uses integer indices)
-
-    Returns
-    -------
-    xr.DataArray
-        DataArray with appropriate dimensions and coordinates
-    """
-    if values.ndim == 2:
-        dims = matrix_dims
-        coords = {matrix_dims[0]: parameters, matrix_dims[1]: parameters}
-    elif values.ndim == 3:
-        dims = (batch_dim,) + matrix_dims
-        coords = {
-            batch_dim: _ensure_batch_coords(batch_coords, values.shape[0]),
-            matrix_dims[0]: parameters,
-            matrix_dims[1]: parameters,
-        }
-    else:
-        raise ValueError(f"Expected 2D or 3D array, got {values.ndim}D")
-    return xr.DataArray(values, dims=dims, coords=coords)
-
-
-def build_vector_dataarray(
-    values: np.ndarray,
-    parameters: Sequence[str],
-    *,
-    parameter_dim: Hashable = "parameter",
-    batch_dim: Hashable = "batch",
-    batch_coords: ArrayLike | None = None,
-) -> xr.DataArray:
-    """Build a DataArray for vector-shaped values with automatic batch detection.
-
-    Parameters
-    ----------
-    values : np.ndarray
-        Array of shape (n,) or (batch, n)
-    parameters : Sequence[str]
-        Parameter names
-    parameter_dim : Hashable
-        Name for the parameter dimension
-    batch_dim : Hashable
-        Name for the batch dimension (used only if values has batch dims)
-    batch_coords : Sequence | None
-        Coordinates for the batch dimension (if None, uses integer indices)
-
-    Returns
-    -------
-    xr.DataArray
-        DataArray with appropriate dimensions and coordinates
-    """
-    if values.ndim == 1:
-        dims = (parameter_dim,)
-        coords = {parameter_dim: parameters}
-    elif values.ndim == 2:
-        dims = (batch_dim, parameter_dim)
-        coords = {
-            batch_dim: _ensure_batch_coords(batch_coords, values.shape[0]),
-            parameter_dim: parameters,
-        }
-    else:
-        raise ValueError(f"Expected 1D or 2D array, got {values.ndim}D")
-    return xr.DataArray(values, dims=dims, coords=coords)
-
-
-def build_scalar_dataarray(
-    values: np.ndarray,
-    *,
-    batch_dim: Hashable = "batch",
-    batch_coords: ArrayLike | None = None,
-) -> xr.DataArray:
-    """Build a DataArray for scalar values with automatic batch detection.
-
-    Parameters
-    ----------
-    values : np.ndarray
-        Array of shape () or (batch,)
-    batch_dim : Hashable
-        Name for the batch dimension (used only if values has batch dims)
-    batch_coords : Sequence | None
-        Coordinates for the batch dimension (if None, uses integer indices)
-
-    Returns
-    -------
-    xr.DataArray
-        DataArray with appropriate dimensions and coordinates
-    """
-    if values.ndim == 0 or (values.ndim == 1 and values.shape[0] == 1):
-        return xr.DataArray(values)
-    elif values.ndim == 1:
-        coords = {batch_dim: _ensure_batch_coords(batch_coords, values.shape[0])}
-        return xr.DataArray(values, dims=(batch_dim,), coords=coords)
-    else:
-        raise ValueError(f"Expected 0D or 1D array, got {values.ndim}D")
