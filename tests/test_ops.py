@@ -3,6 +3,7 @@ import pytest
 import xarray as xr
 
 from fishy import ops
+from fishy import utils
 
 
 @pytest.fixture
@@ -31,26 +32,26 @@ def batched_matrix() -> xr.DataArray:
 class TestHelpers:
     def test_ensure_dims_raises_on_1d(self):
         da = xr.DataArray([1, 2, 3], dims=["x"])
-        with pytest.raises(ValueError, match="at least two dimensions"):
-            ops._ensure_dims(da)
+        with pytest.raises(ValueError, match="at least 2 dimensions"):
+            utils.ensure_dims(da)
 
     def test_ensure_dims_passes_on_2d(self, square_matrix: xr.DataArray):
-        ops._ensure_dims(square_matrix)
+        utils.ensure_dims(square_matrix)
 
     def test_ensure_no_dim_collision_raises(self, square_matrix: xr.DataArray):
         with pytest.raises(ValueError, match="already exists"):
-            ops._ensure_no_dim_collision(square_matrix, "row")
+            utils.ensure_dim_not_in_dataarray(square_matrix, "row")
 
     def test_ensure_no_dim_collision_passes(self, square_matrix: xr.DataArray):
-        ops._ensure_no_dim_collision(square_matrix, "new_dim")
+        utils.ensure_dim_not_in_dataarray(square_matrix, "new_dim")
 
     def test_get_matrix_dims(self, square_matrix: xr.DataArray):
-        row, col = ops._get_matrix_dims(square_matrix)
+        row, col = utils.get_matrix_dims(square_matrix)
         assert row == "row"
         assert col == "col"
 
     def test_get_batch_dims(self, batched_matrix: xr.DataArray):
-        batch_dims = ops._get_batch_dims(batched_matrix)
+        batch_dims = utils.get_batch_dims(batched_matrix)
         assert batch_dims == ("batch",)
 
     def test_get_matrix_shape(self, non_square_matrix: xr.DataArray):
