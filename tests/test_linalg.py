@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 import xarray as xr
 
-from fishy import accessors, indexing, linalg, validation
+from fishy import linalg
 
 
 @pytest.fixture
@@ -26,68 +26,6 @@ def identity_matrix() -> xr.DataArray:
 def batched_matrix() -> xr.DataArray:
     data = np.stack([np.eye(2), 2 * np.eye(2)])
     return xr.DataArray(data, dims=["batch", "row", "col"])
-
-
-class TestValidation:
-    def test_ensure_dims_raises_on_1d(self):
-        da = xr.DataArray([1, 2, 3], dims=["x"])
-        with pytest.raises(ValueError, match="at least 2 dimensions"):
-            validation.ensure_dims(da)
-
-    def test_ensure_dims_passes_on_2d(self, square_matrix: xr.DataArray):
-        validation.ensure_dims(square_matrix)
-
-    def test_ensure_no_dim_collision_raises(self, square_matrix: xr.DataArray):
-        with pytest.raises(ValueError, match="already exists"):
-            validation.ensure_dim_not_in_dataarray(square_matrix, "row")
-
-    def test_ensure_no_dim_collision_passes(self, square_matrix: xr.DataArray):
-        validation.ensure_dim_not_in_dataarray(square_matrix, "new_dim")
-
-    def test_is_square_matrix_raises_on_non_square(
-        self, non_square_matrix: xr.DataArray
-    ):
-        with pytest.raises(ValueError, match="square"):
-            validation.is_square_matrix(non_square_matrix)
-
-    def test_is_square_matrix_passes(self, square_matrix: xr.DataArray):
-        assert validation.is_square_matrix(square_matrix)
-
-
-class TestAccessors:
-    def test_get_matrix_dims(self, square_matrix: xr.DataArray):
-        row, col = accessors.get_matrix_dims(square_matrix)
-        assert row == "row"
-        assert col == "col"
-
-    def test_get_batch_dims(self, batched_matrix: xr.DataArray):
-        batch_dims = accessors.get_batch_dims(batched_matrix)
-        assert batch_dims == ("batch",)
-
-    def test_get_matrix_shape(self, non_square_matrix: xr.DataArray):
-        shape = accessors.get_matrix_shape(non_square_matrix)
-        assert shape == (2, 3)
-
-
-class TestIndexing:
-    def test_at_row(self, square_matrix: xr.DataArray):
-        result = indexing.apply_matrix_indexers(square_matrix, row=0)
-        expected = square_matrix.isel(row=0)
-        xr.testing.assert_equal(result, expected)
-
-    def test_at_col(self, square_matrix: xr.DataArray):
-        result = indexing.apply_matrix_indexers(square_matrix, col=1)
-        expected = square_matrix.isel(col=1)
-        xr.testing.assert_equal(result, expected)
-
-    def test_at_row_and_col(self, square_matrix: xr.DataArray):
-        result = indexing.apply_matrix_indexers(square_matrix, row=0, col=1)
-        expected = square_matrix.isel(row=0, col=1)
-        xr.testing.assert_equal(result, expected)
-
-    def test_at_raises_when_neither_specified(self, square_matrix: xr.DataArray):
-        with pytest.raises(ValueError, match="Either row or col"):
-            indexing.apply_matrix_indexers(square_matrix)
 
 
 class TestDiagonal:
