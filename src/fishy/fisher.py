@@ -7,9 +7,10 @@ import numpy as np
 import xarray as xr
 from numpy.typing import ArrayLike
 
-import fishy.ops
+import fishy.linalg
 
-from .array_ops import (
+from .accessors import get_matrix_coords
+from .construction import (
     build_dataarray_from_array,
     normalize_dataarray,
     normalize_dataset,
@@ -24,7 +25,6 @@ from .dimensions import MatrixDims
 from .inversion import invert_matrices
 from .metadata import normalize_metadata_array
 from .sampling import sample_from_fisher
-from .utils import get_matrix_coords
 
 DEFAULT_ROW_DIM = "row"
 DEFAULT_COL_DIM = "col"
@@ -202,7 +202,7 @@ class FisherMatrix:
 
     def marginalized_errors(self, method: str = "cholesky") -> xr.DataArray:
         cov = self.covariance(method=method)
-        return cov.pipe(fishy.ops.diagonal).pipe(np.sqrt)
+        return cov.pipe(fishy.linalg.diagonal).pipe(np.sqrt)
 
     def correlation(self, method: str = "cholesky") -> xr.DataArray:
         cov = self.covariance(method=method)

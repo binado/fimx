@@ -6,7 +6,8 @@ from typing import TYPE_CHECKING, Mapping, TypeAlias
 import numpy as np
 import xarray as xr
 
-from .utils import ensure_dims, get_matrix_dims, is_square_matrix
+from .accessors import get_matrix_dims
+from .validation import ensure_dims, is_square_matrix
 
 if TYPE_CHECKING:
     from numpy.typing import ArrayLike
@@ -64,17 +65,19 @@ def build_dataarray_from_array(
     return xr.DataArray(array, dims=dims, coords=coords, **kwargs)
 
 
-def partition_matrices(
-    values: np.ndarray, idx_keep: list[int], idx_drop: list[int]
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-    f_kk = submatrix(values, idx_keep, idx_keep)
-    f_kd = submatrix(values, idx_keep, idx_drop)
-    f_dd = submatrix(values, idx_drop, idx_drop)
-    f_dk = submatrix(values, idx_drop, idx_keep)
-    return f_kk, f_kd, f_dd, f_dk
-
-
-def submatrix(values: np.ndarray, rows: list[int], cols: list[int]) -> np.ndarray:
+def _submatrix_numpy(
+    values: np.ndarray, rows: list[int], cols: list[int]
+) -> np.ndarray:
     if values.ndim == 2:
         return values[np.ix_(rows, cols)]
     return np.take(np.take(values, rows, axis=1), cols, axis=2)
+
+
+def partition_matrices(
+    values: np.ndarray, idx_keep: list[int], idx_drop: list[int]
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    f_kk = _submatrix_numpy(values, idx_keep, idx_keep)
+    f_kd = _submatrix_numpy(values, idx_keep, idx_drop)
+    f_dd = _submatrix_numpy(values, idx_drop, idx_drop)
+    f_dk = _submatrix_numpy(values, idx_drop, idx_keep)
+    return f_kk, f_kd, f_dd, f_dk

@@ -1,3 +1,4 @@
+from . import accessors, construction, indexing, linalg, validation
 from .diagnostics import Diagnostics
 from .dimensions import MatrixDims
 from .exceptions import FailedInversionError
@@ -8,4 +9,9 @@ __all__ = [
     "FailedInversionError",
     "FisherMatrix",
     "MatrixDims",
+    "accessors",
+    "construction",
+    "indexing",
+    "linalg",
+    "validation",
 ]

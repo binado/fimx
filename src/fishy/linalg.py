@@ -1,56 +1,11 @@
-from typing import Any, Hashable
+from typing import Hashable
 
 import numpy as np
 import xarray as xr
 from numpy.typing import NDArray
 
-from .utils import ensure_dim_not_in_dataarray, ensure_dims, get_matrix_dims
-
-
-def _get_matrix_shape(da: xr.DataArray) -> tuple[int, int]:
-    row, col = get_matrix_dims(da)
-    return da.sizes[row], da.sizes[col]
-
-
-def _ensure_square(da: xr.DataArray) -> None:
-    ensure_dims(da)
-    row_size, col_size = _get_matrix_shape(da)
-    if row_size != col_size:
-        raise ValueError(
-            "The last two dimensions of the DataArray must have equal size"
-        )
-
-
-def get_indexers(
-    da: xr.DataArray, row: Any | None = None, col: Any | None = None
-) -> dict[Hashable, Any]:
-    if row is None and col is None:
-        raise ValueError("Either row or col must be specified")
-    row_dim, col_dim = get_matrix_dims(da)
-    indexers = {}
-    if row is not None:
-        indexers[row_dim] = row
-    if col is not None:
-        indexers[col_dim] = col
-    return indexers
-
-
-def apply_matrix_indexers(
-    da: xr.DataArray, row: Any | None = None, col: Any | None = None, **kwargs
-) -> xr.DataArray:
-    indexers = get_indexers(da, row, col)
-    return da.isel(indexers=indexers, **kwargs)
-
-
-def apply_matrix_indexers_to_dataset(
-    ds: xr.Dataset,
-    da: xr.DataArray,
-    row: Any | None = None,
-    col: Any | None = None,
-    **kwargs,
-):
-    indexers = get_indexers(da, row, col)
-    return ds.isel(indexers=indexers, **kwargs)
+from .accessors import get_matrix_dims
+from .validation import ensure_dim_not_in_dataarray, ensure_dims, is_square_matrix
 
 
 def diagonal(da: xr.DataArray, offset: int = 0, out_dim: Hashable = "diagonal"):
@@ -81,7 +36,8 @@ def det(da: xr.DataArray) -> xr.DataArray:
 
 
 def inv(da: xr.DataArray) -> xr.DataArray:
-    _ensure_square(da)
+    ensure_dims(da)
+    is_square_matrix(da, raise_exception=True)
     matrix_dims = get_matrix_dims(da)
     return xr.apply_ufunc(
         np.linalg.inv,
@@ -113,7 +69,8 @@ def _symmetrize(a: NDArray) -> NDArray:
 
 
 def symmetrize(da: xr.DataArray) -> xr.DataArray:
-    _ensure_square(da)
+    ensure_dims(da)
+    is_square_matrix(da, raise_exception=True)
     matrix_dims = get_matrix_dims(da)
     return xr.apply_ufunc(
         _symmetrize,
@@ -121,8 +78,3 @@ def symmetrize(da: xr.DataArray) -> xr.DataArray:
         input_core_dims=[matrix_dims],
         output_core_dims=[matrix_dims],
     )
-
-
-def submatrix(da: xr.DataArray, coords: Any) -> xr.DataArray:
-    _ensure_square(da)
-    return apply_matrix_indexers(da, row=coords, col=coords)
