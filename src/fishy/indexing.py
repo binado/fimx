@@ -27,6 +27,9 @@ def isel_matrix(
     return da.isel(indexers, **kwargs)
 
 
+apply_matrix_indexers = isel_matrix
+
+
 def isel_matrix_dataset(
     ds: xr.Dataset,
     da: xr.DataArray,
@@ -36,6 +39,9 @@ def isel_matrix_dataset(
 ) -> xr.Dataset:
     indexers = get_indexers(da, row, col)
     return ds.isel(indexers, **kwargs)
+
+
+apply_matrix_indexers_to_dataset = isel_matrix_dataset
 
 
 def sel_matrix(
@@ -59,4 +65,4 @@ def sel_matrix_dataset(
 def submatrix(da: xr.DataArray, coords: Any) -> xr.DataArray:
     ensure_dims(da)
     is_square_matrix(da, raise_exception=True)
-    return sel_matrix(da, row=coords, col=coords)
+    return isel_matrix(da, row=coords, col=coords)
