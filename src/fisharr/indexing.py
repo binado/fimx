@@ -1,5 +1,6 @@
 from typing import Any, Hashable
 
+import numpy as np
 import xarray as xr
 
 from .accessors import get_matrix_dims
@@ -62,7 +63,23 @@ def sel_matrix_dataset(
     return ds.sel(indexers, **kwargs)
 
 
+def _uses_label_selection(coords: Any) -> bool:
+    if isinstance(coords, str):
+        return True
+    if isinstance(coords, slice):
+        return any(isinstance(bound, str) for bound in (coords.start, coords.stop))
+    try:
+        array = np.asarray(coords)
+    except Exception:
+        return False
+    if array.ndim == 0:
+        return isinstance(coords, str)
+    return all(isinstance(value, str) for value in array.ravel())
+
+
 def submatrix(da: xr.DataArray, coords: Any) -> xr.DataArray:
     ensure_dims(da)
     is_square_matrix(da, raise_exception=True)
+    if _uses_label_selection(coords):
+        return sel_matrix(da, row=coords, col=coords)
     return isel_matrix(da, row=coords, col=coords)
