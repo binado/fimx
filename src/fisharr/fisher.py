@@ -4,6 +4,7 @@ import functools
 from collections.abc import Mapping, Sequence
 
 import numpy as np
+import numpy.typing as npt
 import xarray as xr
 from numpy.typing import ArrayLike
 
@@ -285,7 +286,7 @@ class FisherMatrix:
 
     def transform(
         self,
-        jacobian: np.ndarray | xr.DataArray,
+        jacobian: npt.NDArray | xr.DataArray,
         *,
         new_parameters: Sequence[str] | None = None,
     ) -> "FisherMatrix":
@@ -366,7 +367,7 @@ class FisherMatrix:
         samples = sample_from_fisher(values, num_samples, rng)
 
         dims = self.batch_dims + ("sample", self._parameter_dim)
-        coords: dict[str, np.ndarray] = {
+        coords: dict[str, npt.NDArray] = {
             self._parameter_dim: np.asarray(self.parameters),
             "sample": np.arange(num_samples),
         }
@@ -499,11 +500,11 @@ class FisherMatrix:
     def _indices_for(self, names: Sequence[str]) -> list[int]:
         return [self._parameter_index_map[name] for name in names]
 
-    def _batch_coords(self) -> dict[str, np.ndarray]:
+    def _batch_coords(self) -> dict[str, npt.NDArray]:
         return {dim: self.data.coords[dim].values for dim in self.batch_dims}
 
     def _matrix_dataarray(
-        self, values: np.ndarray, parameters: Sequence[str]
+        self, values: npt.NDArray, parameters: Sequence[str]
     ) -> xr.DataArray:
         row_dim, col_dim = self.matrix_dims
         dims = self.batch_dims + (row_dim, col_dim)
@@ -515,7 +516,7 @@ class FisherMatrix:
         return xr.DataArray(values, dims=dims, coords=coords)
 
     def _vector_dataarray(
-        self, values: np.ndarray, parameters: Sequence[str]
+        self, values: npt.NDArray, parameters: Sequence[str]
     ) -> xr.DataArray:
         dims = self.batch_dims + (self._parameter_dim,)
         coords = {
@@ -524,7 +525,7 @@ class FisherMatrix:
         }
         return xr.DataArray(values, dims=dims, coords=coords)
 
-    def _scalar_dataarray(self, values: np.ndarray) -> xr.DataArray:
+    def _scalar_dataarray(self, values: npt.NDArray) -> xr.DataArray:
         if not self.batch_dims:
             return xr.DataArray(values)
         return xr.DataArray(values, dims=self.batch_dims, coords=self._batch_coords())
@@ -549,7 +550,7 @@ class FisherMatrix:
         return ds
 
     def _new_from_values(
-        self, values: np.ndarray, parameters: Sequence[str]
+        self, values: npt.NDArray, parameters: Sequence[str]
     ) -> "FisherMatrix":
         data = self._matrix_dataarray(values, parameters)
         ds = self._build_dataset_with_metadata(data, parameters)
@@ -588,9 +589,9 @@ class FisherMatrix:
 
     def _normalize_jacobian(
         self,
-        jacobian: np.ndarray | xr.DataArray,
+        jacobian: npt.NDArray | xr.DataArray,
         new_parameters: Sequence[str] | None,
-    ) -> tuple[np.ndarray, list[str]]:
+    ) -> tuple[npt.NDArray, list[str]]:
         if isinstance(jacobian, xr.DataArray):
             if jacobian.ndim != 2:
                 raise ValueError("Jacobian DataArray must be 2D.")
@@ -680,7 +681,7 @@ class FisherMatrix:
         key: str,
         parameters: Sequence[str] | None = None,
         dataset: xr.Dataset | None = None,
-    ) -> np.ndarray | None:
+    ) -> npt.NDArray | None:
         ds = dataset or self._dataset
         if key not in ds:
             return None
@@ -696,8 +697,8 @@ class FisherMatrix:
         parameters: Sequence[str],
         *,
         other_dataset: xr.Dataset | None = None,
-    ) -> dict[str, np.ndarray]:
-        merged: dict[str, np.ndarray] = {}
+    ) -> dict[str, npt.NDArray]:
+        merged: dict[str, npt.NDArray] = {}
         for key, dtype in (
             (LABELS_VAR, np.dtype(object)),
             (UNITS_VAR, np.dtype(object)),

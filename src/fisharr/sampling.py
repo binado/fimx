@@ -1,20 +1,21 @@
 from __future__ import annotations
 
 import numpy as np
+import numpy.typing as npt
 
 from .exceptions import FailedInversionError
 
 
 def sample_from_fisher(
-    values: np.ndarray, num_samples: int, rng: np.random.Generator
-) -> np.ndarray:
+    values: npt.NDArray, num_samples: int, rng: np.random.Generator
+) -> npt.NDArray:
     """Sample parameter values from Fisher matrix using Cholesky decomposition.
 
     Works on both single (n, n) and batched (batch, n, n) Fisher matrices.
 
     Parameters
     ----------
-    values : np.ndarray
+    values : npt.NDArray
         Fisher matrix or batch of Fisher matrices. Must be positive definite.
         Shape (n, n) or (batch, n, n).
     num_samples : int
@@ -24,7 +25,7 @@ def sample_from_fisher(
 
     Returns
     -------
-    np.ndarray
+    npt.NDArray
         Samples from multivariate Gaussian with covariance = Fisher^-1.
         Shape (num_samples, n) for single matrix or (batch, num_samples, n) for batched.
 

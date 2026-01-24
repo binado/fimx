@@ -4,6 +4,7 @@ from collections.abc import Callable, Mapping, Sequence
 from typing import TypeVar
 
 import numpy as np
+import numpy.typing as npt
 from numpy.typing import ArrayLike
 
 T = TypeVar("T")
@@ -39,7 +40,7 @@ def normalize_metadata_array(
     *,
     fill_value: object = np.nan,
     dtype: np.dtype | None = None,
-) -> np.ndarray | None:
+) -> npt.NDArray | None:
     """Normalize metadata values into an array aligned with parameter names.
 
     Parameters
@@ -55,7 +56,7 @@ def normalize_metadata_array(
 
     Returns
     -------
-    np.ndarray | None
+    npt.NDArray | None
         Array of values aligned to names, or None if values is None
     """
     if values is None:

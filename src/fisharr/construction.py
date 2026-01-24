@@ -4,6 +4,7 @@ from collections.abc import Hashable, Sequence
 from typing import TYPE_CHECKING, Mapping, TypeAlias
 
 import numpy as np
+import numpy.typing as npt
 import xarray as xr
 
 from .accessors import get_matrix_dims
@@ -66,16 +67,16 @@ def build_dataarray_from_array(
 
 
 def _submatrix_numpy(
-    values: np.ndarray, rows: list[int], cols: list[int]
-) -> np.ndarray:
+    values: npt.NDArray, rows: list[int], cols: list[int]
+) -> npt.NDArray:
     if values.ndim == 2:
         return values[np.ix_(rows, cols)]
     return np.take(np.take(values, rows, axis=1), cols, axis=2)
 
 
 def partition_matrices(
-    values: np.ndarray, idx_keep: list[int], idx_drop: list[int]
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    values: npt.NDArray, idx_keep: list[int], idx_drop: list[int]
+) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray]:
     f_kk = _submatrix_numpy(values, idx_keep, idx_keep)
     f_kd = _submatrix_numpy(values, idx_keep, idx_drop)
     f_dd = _submatrix_numpy(values, idx_drop, idx_drop)

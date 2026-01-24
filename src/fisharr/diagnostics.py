@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import numpy as np
+import numpy.typing as npt
 import xarray as xr
 
 
@@ -34,19 +35,19 @@ class Diagnostics:
     threshold: float | None
 
 
-def min_eigenvalues(values: np.ndarray) -> np.ndarray:
+def min_eigenvalues(values: npt.NDArray) -> npt.NDArray:
     """Compute minimum eigenvalues of matrices.
 
     Works on both single (n, n) and batched (batch, n, n) arrays.
 
     Parameters
     ----------
-    values : np.ndarray
+    values : npt.NDArray
         Matrix or batch of matrices
 
     Returns
     -------
-    np.ndarray
+    npt.NDArray
         Minimum eigenvalue for each matrix. Shape () or (batch,).
     """
     eigvals = np.linalg.eigvalsh(values)
@@ -54,20 +55,20 @@ def min_eigenvalues(values: np.ndarray) -> np.ndarray:
 
 
 def min_max_eigenvalues(
-    values: np.ndarray, method: str
-) -> tuple[np.ndarray, np.ndarray]:
+    values: npt.NDArray, method: str
+) -> tuple[npt.NDArray, npt.NDArray]:
     """Compute minimum and maximum eigenvalues of matrices.
 
     Parameters
     ----------
-    values : np.ndarray
+    values : npt.NDArray
         Matrix or batch of matrices
     method : str
         Method to use: 'eig' for eigenvalues, 'svd' for singular values
 
     Returns
     -------
-    tuple[np.ndarray, np.ndarray]
+    tuple[npt.NDArray, npt.NDArray]
         (min_values, max_values) where each is shape () or (batch,)
 
     Raises
@@ -87,31 +88,31 @@ def min_max_eigenvalues(
     return _METHODS[method](values)
 
 
-def _min_max_eigvals(values: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+def _min_max_eigvals(values: npt.NDArray) -> tuple[npt.NDArray, npt.NDArray]:
     """Compute min/max eigenvalues."""
     eigvals = np.linalg.eigvalsh(values)
     return np.min(eigvals, axis=-1), np.max(eigvals, axis=-1)
 
 
-def _min_max_svals(values: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+def _min_max_svals(values: npt.NDArray) -> tuple[npt.NDArray, npt.NDArray]:
     """Compute min/max singular values."""
     svals = np.linalg.svd(values, compute_uv=False)
     return np.min(svals, axis=-1), np.max(svals, axis=-1)
 
 
-def condition_numbers(values: np.ndarray, method: str) -> np.ndarray:
+def condition_numbers(values: npt.NDArray, method: str) -> npt.NDArray:
     """Compute condition numbers of matrices.
 
     Parameters
     ----------
-    values : np.ndarray
+    values : npt.NDArray
         Matrix or batch of matrices
     method : str
         Method to use: 'eig' for eigenvalue-based, 'svd' for singular value-based
 
     Returns
     -------
-    np.ndarray
+    npt.NDArray
         Condition number for each matrix. Shape () or (batch,).
 
     Raises
@@ -131,13 +132,13 @@ def condition_numbers(values: np.ndarray, method: str) -> np.ndarray:
     return _METHODS[method](values)
 
 
-def _condition_number_eig(values: np.ndarray) -> np.ndarray:
+def _condition_number_eig(values: npt.NDArray) -> npt.NDArray:
     """Compute condition number using eigenvalues."""
     eigvals = np.linalg.eigvalsh(values)
     return np.max(eigvals, axis=-1) / np.min(eigvals, axis=-1)
 
 
-def _condition_number_svd(values: np.ndarray) -> np.ndarray:
+def _condition_number_svd(values: npt.NDArray) -> npt.NDArray:
     """Compute condition number using singular values."""
     svals = np.linalg.svd(values, compute_uv=False)
     return np.max(svals, axis=-1) / np.min(svals, axis=-1)

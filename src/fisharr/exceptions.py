@@ -76,13 +76,13 @@ class FailedInversionError(Exception):
 
     @classmethod
     def from_matrix(
-        cls, mat: np.ndarray, method: str, original_error: Exception
+        cls, mat: npt.NDArray, method: str, original_error: Exception
     ) -> "FailedInversionError":
         """Create exception with diagnostics from matrix analysis.
 
         Parameters
         ----------
-        mat : np.ndarray
+        mat : npt.NDArray
             The matrix that failed to invert
         method : str
             The inversion method that was attempted

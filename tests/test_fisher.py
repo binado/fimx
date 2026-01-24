@@ -1,4 +1,5 @@
 import numpy as np
+import numpy.typing as npt
 import pytest
 import xarray as xr
 
@@ -17,30 +18,30 @@ def parameters() -> list[str]:
 
 
 @pytest.fixture
-def fisher_values() -> np.ndarray:
+def fisher_values() -> npt.NDArray:
     return np.array([[4.0, 1.0, 0.5], [1.0, 3.0, 0.2], [0.5, 0.2, 2.0]])
 
 
 @pytest.fixture
-def fisher_matrix(parameters: list[str], fisher_values: np.ndarray) -> FisherMatrix:
+def fisher_matrix(parameters: list[str], fisher_values: npt.NDArray) -> FisherMatrix:
     return FisherMatrix(fisher_values, parameters)
 
 
 @pytest.fixture
-def batched_fisher_values(fisher_values: np.ndarray) -> np.ndarray:
+def batched_fisher_values(fisher_values: npt.NDArray) -> npt.NDArray:
     return np.stack([fisher_values, 2 * fisher_values])
 
 
 @pytest.fixture
 def batched_fisher_matrix(
-    parameters: list[str], batched_fisher_values: np.ndarray
+    parameters: list[str], batched_fisher_values: npt.NDArray
 ) -> FisherMatrix:
     return FisherMatrix(batched_fisher_values, parameters, batch_dims=["batch"])
 
 
 class TestFisherMatrixInit:
     def test_init_from_numpy_array(
-        self, parameters: list[str], fisher_values: np.ndarray
+        self, parameters: list[str], fisher_values: npt.NDArray
     ) -> None:
         fm = FisherMatrix(fisher_values, parameters)
 
@@ -49,13 +50,13 @@ class TestFisherMatrixInit:
         np.testing.assert_array_equal(fm.data.values, fisher_values)
 
     def test_init_from_numpy_array_requires_parameters(
-        self, fisher_values: np.ndarray
+        self, fisher_values: npt.NDArray
     ) -> None:
         with pytest.raises(ValueError, match="parameters are required"):
             FisherMatrix(fisher_values)
 
     def test_init_from_dataarray(
-        self, parameters: list[str], fisher_values: np.ndarray
+        self, parameters: list[str], fisher_values: npt.NDArray
     ) -> None:
         da = xr.DataArray(
             fisher_values,
@@ -68,7 +69,7 @@ class TestFisherMatrixInit:
         np.testing.assert_array_equal(fm.data.values, fisher_values)
 
     def test_init_from_dataarray_ignores_parameters_argument(
-        self, fisher_values: np.ndarray
+        self, fisher_values: npt.NDArray
     ) -> None:
         da = xr.DataArray(
             fisher_values,
@@ -81,7 +82,7 @@ class TestFisherMatrixInit:
         assert fm.parameters == ["x", "y", "z"]
 
     def test_init_from_dataarray_extracts_params_from_coord_name(
-        self, fisher_values: np.ndarray
+        self, fisher_values: npt.NDArray
     ) -> None:
         params = ["x", "y", "z"]
         da = xr.DataArray(
@@ -94,7 +95,7 @@ class TestFisherMatrixInit:
         assert fm.parameters == params
 
     def test_init_from_dataset(
-        self, parameters: list[str], fisher_values: np.ndarray
+        self, parameters: list[str], fisher_values: npt.NDArray
     ) -> None:
         da = xr.DataArray(
             fisher_values,
@@ -118,7 +119,7 @@ class TestFisherMatrixInit:
             FisherMatrix(da)
 
     def test_init_with_batch_dimension(
-        self, parameters: list[str], batched_fisher_values: np.ndarray
+        self, parameters: list[str], batched_fisher_values: npt.NDArray
     ) -> None:
         fm = FisherMatrix(batched_fisher_values, parameters, batch_dims=["batch"])
 
@@ -127,13 +128,13 @@ class TestFisherMatrixInit:
         assert fm.data.sizes["batch"] == 2
 
     def test_init_with_batch_dimension_requires_batch_dims(
-        self, parameters: list[str], batched_fisher_values: np.ndarray
+        self, parameters: list[str], batched_fisher_values: npt.NDArray
     ) -> None:
         with pytest.raises(ValueError, match="batch_dims must be provided"):
             FisherMatrix(batched_fisher_values, parameters)
 
     def test_init_preserves_multiple_batch_dims(
-        self, parameters: list[str], fisher_values: np.ndarray
+        self, parameters: list[str], fisher_values: npt.NDArray
     ) -> None:
         batch1, batch2 = 2, 3
         n_params = len(parameters)
@@ -152,7 +153,7 @@ class TestFisherMatrixInit:
         assert fm.data.sizes["batch2"] == batch2
 
     def test_init_with_custom_parameter_dim(
-        self, parameters: list[str], fisher_values: np.ndarray
+        self, parameters: list[str], fisher_values: npt.NDArray
     ) -> None:
         fm = FisherMatrix(
             fisher_values,
@@ -196,7 +197,7 @@ class TestCovariance:
         assert cov.attrs["method"] == "cholesky"
 
     def test_covariance_is_inverse_of_fisher(
-        self, fisher_matrix: FisherMatrix, fisher_values: np.ndarray
+        self, fisher_matrix: FisherMatrix, fisher_values: npt.NDArray
     ) -> None:
         cov = fisher_matrix.covariance()
 
@@ -319,7 +320,7 @@ class TestFix:
         assert result.data.shape == (1, 1)
 
     def test_fix_preserves_submatrix_values(
-        self, fisher_matrix: FisherMatrix, fisher_values: np.ndarray
+        self, fisher_matrix: FisherMatrix, fisher_values: npt.NDArray
     ) -> None:
         result = fisher_matrix.fix("c")
 
