@@ -9,12 +9,14 @@ from numpy.typing import ArrayLike
 
 import fishy.linalg
 
-from .accessors import get_matrix_coords
+from .accessors import get_batch_dims, get_matrix_coords, get_matrix_dims
 from .construction import (
     build_dataarray_from_array,
     normalize_dataarray,
     normalize_dataset,
+    partition_matrices,
 )
+from .indexing import submatrix
 from .diagnostics import (
     Diagnostics,
     condition_numbers,
@@ -122,11 +124,11 @@ class FisherMatrix:
 
     @property
     def matrix_dims(self) -> MatrixDims:
-        return (self.data.dims[-2], self.data.dims[-1])
+        return get_matrix_dims(self.data)
 
     @property
     def batch_dims(self) -> tuple[str, ...]:
-        return tuple(str(d) for d in self.data.dims[:-2])
+        return tuple(str(d) for d in get_batch_dims(self.data))
 
     @property
     def labels(self) -> xr.DataArray | None:
@@ -275,14 +277,14 @@ class FisherMatrix:
         if not keep:
             raise ValueError("Cannot marginalize all parameters.")
 
-        row_dim, col_dim = self.matrix_dims
-        f_kk = self.data.sel({row_dim: keep, col_dim: keep})
-        f_kd = self.data.sel({row_dim: keep, col_dim: drop})
-        f_dd = self.data.sel({row_dim: drop, col_dim: drop})
-        f_dk = self.data.sel({row_dim: drop, col_dim: keep})
+        idx_keep = self._indices_for(keep)
+        idx_drop = self._indices_for(drop)
+        f_kk, f_kd, f_dd, f_dk = partition_matrices(
+            self.data.values, idx_keep, idx_drop
+        )
 
-        inv_dd = invert_matrices(f_dd.values, method=method)
-        reduced = f_kk.values - f_kd.values @ inv_dd @ f_dk.values
+        inv_dd = invert_matrices(f_dd, method=method)
+        reduced = f_kk - f_kd @ inv_dd @ f_dk
         return self._new_from_values(reduced, keep)
 
     def fix(self, parameters: str | Sequence[str]) -> "FisherMatrix":
@@ -293,8 +295,7 @@ class FisherMatrix:
         if not keep:
             raise ValueError("Cannot fix all parameters.")
 
-        row_dim, col_dim = self.matrix_dims
-        reduced_da = self.data.sel({row_dim: keep, col_dim: keep})
+        reduced_da = submatrix(self.data, keep)
         return self._new_from_values(reduced_da.values, keep)
 
     def transform(

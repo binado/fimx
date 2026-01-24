@@ -20,25 +20,43 @@ def get_indexers(
     return indexers
 
 
-def apply_matrix_indexers(
+def isel_matrix(
     da: xr.DataArray, row: Any | None = None, col: Any | None = None, **kwargs
 ) -> xr.DataArray:
     indexers = get_indexers(da, row, col)
-    return da.isel(indexers=indexers, **kwargs)
+    return da.isel(indexers, **kwargs)
 
 
-def apply_matrix_indexers_to_dataset(
+def isel_matrix_dataset(
     ds: xr.Dataset,
     da: xr.DataArray,
     row: Any | None = None,
     col: Any | None = None,
     **kwargs,
-):
+) -> xr.Dataset:
     indexers = get_indexers(da, row, col)
-    return ds.isel(indexers=indexers, **kwargs)
+    return ds.isel(indexers, **kwargs)
+
+
+def sel_matrix(
+    da: xr.DataArray, row: Any | None = None, col: Any | None = None, **kwargs
+) -> xr.DataArray:
+    indexers = get_indexers(da, row, col)
+    return da.sel(indexers, **kwargs)
+
+
+def sel_matrix_dataset(
+    ds: xr.Dataset,
+    da: xr.DataArray,
+    row: Any | None = None,
+    col: Any | None = None,
+    **kwargs,
+) -> xr.Dataset:
+    indexers = get_indexers(da, row, col)
+    return ds.sel(indexers, **kwargs)
 
 
 def submatrix(da: xr.DataArray, coords: Any) -> xr.DataArray:
     ensure_dims(da)
     is_square_matrix(da, raise_exception=True)
-    return apply_matrix_indexers(da, row=coords, col=coords)
+    return sel_matrix(da, row=coords, col=coords)
