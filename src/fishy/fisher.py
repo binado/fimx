@@ -24,6 +24,7 @@ from .dimensions import MatrixDims
 from .inversion import invert_matrices
 from .metadata import normalize_metadata_array
 from .sampling import sample_from_fisher
+from .utils import get_matrix_coords
 
 DEFAULT_ROW_DIM = "row"
 DEFAULT_COL_DIM = "col"
@@ -42,41 +43,6 @@ def _is_missing(value: object) -> bool:
     if isinstance(value, (float, np.floating)) and np.isnan(value):
         return True
     return False
-
-
-def _extract_parameters(
-    da: xr.DataArray,
-    parameters: Sequence[str] | str | None,
-) -> list[str]:
-    """Extract parameter names from DataArray or parameters argument.
-
-    Matrix dimensions are the last two dimensions of the array.
-    """
-    if isinstance(parameters, str):
-        if parameters not in da.coords:
-            raise ValueError(f"Missing coordinate '{parameters}' for data.")
-        return list(da.coords[parameters].values)
-    if parameters is not None:
-        return list(parameters)
-    row_dim = da.dims[-2]
-    if row_dim not in da.coords:
-        raise ValueError(f"Missing coordinate for row dim {row_dim}.")
-    return list(da.coords[row_dim].values)
-
-
-def _ensure_parameter_coords(
-    da: xr.DataArray, parameters: Sequence[str]
-) -> xr.DataArray:
-    """Assign parameter coordinates to row and column dimensions.
-
-    Matrix dimensions are the last two dimensions of the array.
-    """
-    row_dim, col_dim = da.dims[-2], da.dims[-1]
-    if da.sizes[row_dim] != len(parameters):
-        raise ValueError("parameters length must match matrix size.")
-    if da.sizes[col_dim] != len(parameters):
-        raise ValueError("parameters length must match matrix size.")
-    return da.assign_coords({row_dim: parameters, col_dim: parameters})
 
 
 def _normalize_ndarray(
@@ -134,12 +100,9 @@ class FisherMatrix:
             self._sync_metadata(labels=labels, units=units, fiducials=fiducials)
             return
 
-        params = _extract_parameters(da, parameters)
-        da = _ensure_parameter_coords(da, params)
+        params, _ = get_matrix_coords(da)
         if ds is None:
             ds = xr.Dataset({FISHER_VAR: da})
-        else:
-            ds = ds.assign({FISHER_VAR: da})
         self._dataset = ds.assign_coords({parameter_dim: params})
 
         self._sync_metadata(labels=labels, units=units, fiducials=fiducials)

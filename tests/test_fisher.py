@@ -67,7 +67,7 @@ class TestFisherMatrixInit:
         assert fm.parameters == parameters
         np.testing.assert_array_equal(fm.data.values, fisher_values)
 
-    def test_init_from_dataarray_with_parameters_override(
+    def test_init_from_dataarray_ignores_parameters_argument(
         self, fisher_values: np.ndarray
     ) -> None:
         da = xr.DataArray(
@@ -78,7 +78,7 @@ class TestFisherMatrixInit:
         new_params = ["a", "b", "c"]
         fm = FisherMatrix(da, parameters=new_params)
 
-        assert fm.parameters == new_params
+        assert fm.parameters == ["x", "y", "z"]
 
     def test_init_from_dataarray_extracts_params_from_coord_name(
         self, fisher_values: np.ndarray
