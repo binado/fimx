@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 import xarray as xr
 
-from fishy import construction
+from fisharr import construction
 
 
 @pytest.fixture

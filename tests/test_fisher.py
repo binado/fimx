@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 import xarray as xr
 
-from fishy.fisher import (
+from fisharr.fisher import (
     COVARIANCE_VAR,
     DEFAULT_COL_DIM,
     DEFAULT_ROW_DIM,

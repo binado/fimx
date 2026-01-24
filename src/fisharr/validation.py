@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Hashable
 import numpy as np
 import xarray as xr
 
-from fishy.exceptions import InsufficientDimsError, MatrixNotSquareError
+from fisharr.exceptions import InsufficientDimsError, MatrixNotSquareError
 
 if TYPE_CHECKING:
     from numpy.typing import ArrayLike

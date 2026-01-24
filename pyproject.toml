@@ -1,5 +1,5 @@
 [project]
-name = "fishy"
+name = "fisharr"
 version = "0.1.0"
 description = "Lightweight python library for manipulating Fisher matrices"
 readme = "README.md"

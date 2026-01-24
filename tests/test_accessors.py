@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 import xarray as xr
 
-from fishy import accessors
+from fisharr import accessors
 
 
 @pytest.fixture

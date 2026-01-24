@@ -1,6 +1,6 @@
 ## About the package
 
-`fishy` is a python package that provides a `FisherMatrix` class with helper methods for dealing with Fisher matrices. It allows users to manipulate, and analyze Fisher matrices.
+`fisharr` is a python package that provides a `FisherMatrix` class with helper methods for dealing with Fisher matrices. It allows users to manipulate, and analyze Fisher matrices.
 
 ## Project management
 

@@ -7,7 +7,7 @@ import numpy as np
 import xarray as xr
 from numpy.typing import ArrayLike
 
-import fishy.linalg
+import fisharr.linalg
 
 from .accessors import get_batch_dims, get_matrix_coords, get_matrix_dims
 from .construction import (
@@ -204,7 +204,7 @@ class FisherMatrix:
 
     def marginalized_errors(self, method: str = "cholesky") -> xr.DataArray:
         cov = self.covariance(method=method)
-        return cov.pipe(fishy.linalg.diagonal).pipe(np.sqrt)
+        return cov.pipe(fisharr.linalg.diagonal).pipe(np.sqrt)
 
     def correlation(self, method: str = "cholesky") -> xr.DataArray:
         cov = self.covariance(method=method)

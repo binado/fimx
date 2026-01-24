@@ -1,4 +1,4 @@
-"""Custom exceptions for the fishy package."""
+"""Custom exceptions for the fisharr package."""
 
 from __future__ import annotations
 
