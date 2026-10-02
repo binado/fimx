@@ -3,15 +3,17 @@
 import json
 from argparse import ArgumentParser
 from collections.abc import Sequence
+from dataclasses import dataclass
 from math import isfinite
 from pathlib import Path
-from typing import Any, get_args
+from typing import get_args
 
 import numpy as np
 import xarray as xr
 
 from .construction import _validate_matrix
 from .inversion import InversionMethod, inv
+from .io import load_dataset
 
 
 def _parser() -> ArgumentParser:
@@ -42,7 +44,7 @@ def _parser() -> ArgumentParser:
 
 def _load_matrix(path: Path) -> xr.DataArray:
     """Load a standalone DataArray or the Fisher variable from a Dataset."""
-    dataset = xr.load_dataset(path, engine="h5netcdf")
+    dataset = load_dataset(path)
     if "fisher" in dataset.data_vars:
         return dataset["fisher"]
     if len(dataset.data_vars) == 1:
@@ -55,66 +57,122 @@ def _json_number(value: float) -> float | None:
     return float(value) if isfinite(float(value)) else None
 
 
-def _report(F: xr.DataArray, methods: Sequence[InversionMethod]) -> dict[str, Any]:
-    """Calculate matrix diagnostics and inversion residual summaries."""
-    matrix, parameters = _validate_matrix(F)
-    values = matrix.values
-    eigenvalues = np.linalg.eigvalsh(values)
-    condition_number = float(np.linalg.cond(values))
-    summary: dict[str, Any] = {
-        "matrix_size": len(parameters),
-        "parameters": parameters,
-        "condition_number": _json_number(condition_number),
-        "rank": int(np.linalg.matrix_rank(values)),
-        "eigenvalues": {
-            "min": _json_number(float(eigenvalues[0])),
-            "max": _json_number(float(eigenvalues[-1])),
-        },
-        "positive_definite": bool(eigenvalues[0] > 0),
-        "methods": {},
-    }
-    results: dict[str, Any] = summary["methods"]
-    identity = np.eye(len(parameters))
-    for method in methods:
-        try:
-            inverse = inv(matrix, method=method)
-        except np.linalg.LinAlgError as error:
-            results[method] = {"success": False, "error": str(error)}
-            continue
-        residual = values @ inverse.values - identity
-        results[method] = {
-            "success": True,
-            "max_abs_residual": _json_number(float(np.max(np.abs(residual)))),
-        }
-    return summary
-
-
 def _format_number(value: float | None) -> str:
     """Format a diagnostic number for the human-readable report."""
     return "∞/undefined" if value is None else f"{value:.6g}"
 
 
-def _print_text(path: Path, report: dict[str, Any]) -> None:
-    """Print diagnostics in a readable text format."""
-    print(f"Fisher matrix: {path}")
-    print(f"Size: {report['matrix_size']}")
-    print(f"Parameters: {', '.join(report['parameters'])}")
-    print(f"Condition number: {_format_number(report['condition_number'])}")
-    print(f"Numerical rank: {report['rank']}")
-    eigenvalues = report["eigenvalues"]
-    print(
-        "Eigenvalue range: "
-        f"[{_format_number(eigenvalues['min'])}, "
-        f"{_format_number(eigenvalues['max'])}]"
+@dataclass(frozen=True)
+class MethodInversionReport:
+    """Result for one inversion method."""
+
+    method: InversionMethod
+    success: bool
+    max_abs_residual: float | None = None
+    error: str | None = None
+
+
+@dataclass(frozen=True)
+class InversionReport:
+    """Diagnostics and inversion results for a Fisher matrix."""
+
+    file: str
+    matrix_size: int
+    parameters: tuple[str, ...]
+    condition_number: float | None
+    rank: int
+    min_eigenvalue: float | None
+    max_eigenvalue: float | None
+    positive_definite: bool
+    methods: tuple[MethodInversionReport, ...]
+
+    def __str__(self) -> str:
+        """Return a readable, multi-line report for ``print()``."""
+        lines = [
+            f"Fisher matrix: {self.file}",
+            f"Size: {self.matrix_size}",
+            f"Parameters: {', '.join(self.parameters)}",
+            f"Condition number: {_format_number(self.condition_number)}",
+            f"Numerical rank: {self.rank}",
+            (
+                "Eigenvalue range: "
+                f"[{_format_number(self.min_eigenvalue)}, "
+                f"{_format_number(self.max_eigenvalue)}]"
+            ),
+            f"Positive definite: {self.positive_definite}",
+            "Inversion methods:",
+        ]
+        for result in self.methods:
+            if result.success:
+                residual = _format_number(result.max_abs_residual)
+                lines.append(f"  {result.method}: max |F @ F_inv - I| = {residual}")
+            else:
+                lines.append(f"  {result.method}: failed ({result.error})")
+        return "\n".join(lines)
+
+    def asdict(self) -> dict[str, object]:
+        """Return a JSON-compatible dictionary of report values."""
+        methods: dict[str, dict[str, bool | str | float | None]] = {}
+        for result in self.methods:
+            if result.success:
+                methods[result.method] = {
+                    "success": True,
+                    "max_abs_residual": result.max_abs_residual,
+                }
+            else:
+                methods[result.method] = {
+                    "success": False,
+                    "error": result.error,
+                }
+        return {
+            "file": self.file,
+            "matrix_size": self.matrix_size,
+            "parameters": list(self.parameters),
+            "condition_number": self.condition_number,
+            "rank": self.rank,
+            "eigenvalues": {
+                "min": self.min_eigenvalue,
+                "max": self.max_eigenvalue,
+            },
+            "positive_definite": self.positive_definite,
+            "methods": methods,
+        }
+
+
+def _inversion_report(
+    path: Path, F: xr.DataArray, methods: Sequence[InversionMethod]
+) -> InversionReport:
+    """Calculate matrix diagnostics and inversion residual summaries."""
+    matrix, parameters = _validate_matrix(F)
+    values = matrix.values
+    eigenvalues = np.linalg.eigvalsh(values)
+    results: list[MethodInversionReport] = []
+    identity = np.eye(len(parameters))
+    for method in methods:
+        try:
+            inverse = inv(matrix, method=method)
+        except np.linalg.LinAlgError as error:
+            results.append(MethodInversionReport(method, False, error=str(error)))
+            continue
+        residual = values @ inverse.values - identity
+        results.append(
+            MethodInversionReport(
+                method,
+                True,
+                max_abs_residual=_json_number(float(np.max(np.abs(residual)))),
+            )
+        )
+    return InversionReport(
+        file=str(path),
+        matrix_size=len(parameters),
+        parameters=tuple(parameters),
+        condition_number=_json_number(float(np.linalg.cond(values))),
+        rank=int(np.linalg.matrix_rank(values)),
+        min_eigenvalue=_json_number(float(eigenvalues[0])),
+        max_eigenvalue=_json_number(float(eigenvalues[-1])),
+        positive_definite=bool(eigenvalues[0] > 0),
+        methods=tuple(results),
     )
-    print(f"Positive definite: {report['positive_definite']}")
-    print("Inversion methods:")
-    for method, result in report["methods"].items():
-        if result["success"]:
-            residual = _format_number(result["max_abs_residual"])
-            print(f"  {method}: max |F @ F_inv - I| = {residual}")
-        else:
-            print(f"  {method}: failed ({result['error']})")
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -134,15 +192,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         fisher = _load_matrix(args.file)
-        report = _report(fisher, args.inversion_method)
+        inversion_report = _inversion_report(args.file, fisher, args.inversion_method)
     except (OSError, ValueError) as error:
         parser.error(str(error))
 
     if args.json:
-        print(json.dumps({"file": str(args.file), **report}, allow_nan=False))
+        print(json.dumps(inversion_report.asdict(), allow_nan=False))
     else:
-        _print_text(args.file, report)
-    return int(not any(result["success"] for result in report["methods"].values()))
+        print(inversion_report)
+    return int(not any(result.success for result in inversion_report.methods))
 
 
 if __name__ == "__main__":
