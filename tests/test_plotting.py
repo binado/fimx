@@ -15,7 +15,7 @@ import pytest
 import xarray as xr
 from matplotlib.figure import Figure
 
-from fisharr import dataset, matrix, plot
+from fimx import dataset, matrix, plot
 
 
 @pytest.fixture(autouse=True)
@@ -163,16 +163,16 @@ class BlockOptional(importlib.abc.MetaPathFinder):
         if fullname.split('.')[0] == sys.argv[1]:
             raise ModuleNotFoundError(name=sys.argv[1])
 sys.meta_path.insert(0, BlockOptional())
-import fisharr
+import fimx
 import xarray as xr
-F = fisharr.matrix([[1]], ['a'])
-ds = fisharr.dataset(F, {'fiducials': [0]})
+F = fimx.matrix([[1]], ['a'])
+ds = fimx.dataset(F, {'fiducials': [0]})
 assert 'getdist' not in sys.modules
 assert 'matplotlib' not in sys.modules
 try:
-    fisharr.plot({'survey': ds})
+    fimx.plot({'survey': ds})
 except ImportError as exc:
-    assert "uv add 'fisharr[plotting]'" in str(exc)
+    assert "uv add 'fimx[plotting]'" in str(exc)
 else:
     raise AssertionError('Expected missing-dependency error')
 """

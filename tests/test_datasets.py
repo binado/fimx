@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 import xarray as xr
 
-from fisharr import dataset, matrix
+from fimx import dataset, matrix
 
 
 def test_dataset_alignment_and_independence(F: xr.DataArray) -> None:

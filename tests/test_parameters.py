@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 import xarray as xr
 
-from fisharr import fix, inv, marginalize, matrix, transform
+from fimx import fix, inv, marginalize, matrix, transform
 
 
 def test_fix_vs_marginalization() -> None:

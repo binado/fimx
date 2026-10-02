@@ -5,12 +5,12 @@ import pytest
 import xarray as xr
 from numpy.typing import ArrayLike
 
-import fisharr
-from fisharr import combine, errors, fix, inv, marginalize, matrix, transform
+import fimx
+from fimx import combine, errors, fix, inv, marginalize, matrix, transform
 
 
 def test_public_api() -> None:
-    assert set(fisharr.__all__) == {
+    assert set(fimx.__all__) == {
         "matrix",
         "fix",
         "marginalize",
@@ -22,7 +22,7 @@ def test_public_api() -> None:
         "dataset",
         "plot",
     }
-    assert not hasattr(fisharr, "FisherMatrix")
+    assert not hasattr(fimx, "FisherMatrix")
 
 
 def test_construction() -> None:
@@ -77,7 +77,7 @@ def test_symmetry_tolerance() -> None:
 
 
 def _invalid_matrices() -> list[xr.DataArray]:
-    """Build malformed arrays without using fisharr construction."""
+    """Build malformed arrays without using fimx construction."""
     coords = {"row": ["a", "b"], "col": ["a", "b"]}
     return [
         xr.DataArray(np.eye(2), dims=("x", "y")),

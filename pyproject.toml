@@ -1,5 +1,5 @@
 [project]
-name = "fisharr"
+name = "fimx"
 version = "0.1.0"
 description = "Dense Fisher matrix functions on labeled xarray arrays"
 readme = "README.md"
@@ -18,7 +18,7 @@ io = ["h5netcdf[h5py]"]
 plotting = ["getdist", "matplotlib"]
 
 [project.scripts]
-fisharr-plot = "fisharr.cli:main"
+fimx-plot = "fimx.cli:main"
 
 [build-system]
 requires = ["uv_build>=0.12.7,<0.13.0"]
