@@ -15,9 +15,12 @@ import numpy as np
 import pytest
 import xarray as xr
 from matplotlib.figure import Figure
+from typer.testing import CliRunner
 
 from fimx import dataset, matrix, plot
-from fimx.cli import main
+from fimx.cli import app
+
+runner = CliRunner()
 
 
 @pytest.fixture(autouse=True)
@@ -219,15 +222,18 @@ def test_cli_inversion_method_pinv_saves_degenerate_figure(
     source = tmp_path / "survey.nc"
     degenerate_forecast.to_netcdf(source)
     figure_file = tmp_path / "out.png"
-    argv = ["--file", str(source), "--figure-file", str(figure_file)]
+    argv = ["plot", "--file", str(source), "--figure-file", str(figure_file)]
     argv += ["--parameters", "a", "--inversion-method", "pinv"]
-    main(argv)
+    result = runner.invoke(app, argv)
+    assert result.exit_code == 0
     assert figure_file.exists()
 
 
 def test_cli_unknown_inversion_method_exits(tmp_path: Path) -> None:
-    with pytest.raises(SystemExit):
-        main(["--file", str(tmp_path / "x.nc"), "--inversion-method", "lu"])
+    result = runner.invoke(
+        app, ["plot", "--file", str(tmp_path / "x.nc"), "--inversion-method", "lu"]
+    )
+    assert result.exit_code != 0
 
 
 def _labeled(forecast: xr.Dataset, labels: list[str]) -> xr.Dataset:
@@ -289,7 +295,10 @@ def test_cli_uses_dataset_labels(forecast: xr.Dataset, tmp_path: Path) -> None:
     source = tmp_path / "survey.nc"
     _labeled(forecast, ["alpha", "beta", "gamma"]).to_netcdf(source)
     figure_file = tmp_path / "out.png"
-    main(["--file", str(source), "--figure-file", str(figure_file)])
+    result = runner.invoke(
+        app, ["plot", "--file", str(source), "--figure-file", str(figure_file)]
+    )
+    assert result.exit_code == 0
     assert figure_file.exists()
 
 

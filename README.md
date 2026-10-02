@@ -8,6 +8,8 @@ handles labels, metadata containers, and persistence.
 uv add fimx
 # Optional NetCDF backend:
 uv add 'fimx[io]'
+# Optional command-line interface (includes the NetCDF backend):
+uv add 'fimx[cli]'
 # Optional Gaussian plotting backend:
 uv add 'fimx[plotting]'
 ```
@@ -147,12 +149,13 @@ fig = plot(
 
 ### Command line
 
-With both extras installed, `fimx-plot` draws a corner plot from NetCDF
-Datasets that contain `fisher` and `fiducials`:
+The `cli` extra provides the `fimx` command and includes the NetCDF backend.
+`fimx plot` also needs the `plotting` extra. It draws a corner plot from
+NetCDF Datasets that contain `fisher` and `fiducials`:
 
 ```sh
-uv add 'fimx[io,plotting]'
-fimx-plot --file survey-a.nc --file survey-b.nc \
+uv add 'fimx[cli,plotting]'
+fimx plot --file survey-a.nc --file survey-b.nc \
     --figure-file constraints.png --figure-dpi 200 \
     --parameters a b --no-filled --backend getdist \
     --backend-kwargs '{"contour_colors": ["C0", "C1"]}'
@@ -167,14 +170,14 @@ line contours, `--inversion-method` picks `cholesky`, `inv`, or `pinv`,
 `--backend` picks a backend, and `--backend-kwargs` takes a JSON object.
 `fimx.io.load_dataset(path)` loads the same files from Python.
 
-`fimx-invert` reports matrix conditioning and inversion residuals from either
-a standalone matrix DataArray or a Dataset containing `fisher`; an existing
-`covariance` is ignored:
+`fimx invert` needs only the `cli` extra. It reports matrix conditioning and
+inversion residuals from either a standalone matrix DataArray or a Dataset
+containing `fisher`; an existing `covariance` is ignored:
 
 ```sh
-fimx-invert --file fisher.nc
-fimx-invert --file forecast.nc --inversion-method inv pinv --json
-fimx-invert --file forecast.nc --save forecast-with-covariance.nc
+fimx invert --file fisher.nc
+fimx invert --file forecast.nc --inversion-method inv pinv --json
+fimx invert --file forecast.nc --save forecast-with-covariance.nc
 ```
 
 All three inversion methods (`cholesky`, `inv`, and `pinv`) are evaluated by
@@ -200,7 +203,7 @@ C_restored = inv(restored)
 ```
 
 For forecasts, `fimx.io.save_dataset` writes the Dataset convention read by
-`plot`, `fimx-plot` and `fimx-invert`; `fimx.io.load_dataset` reads it back.
+`plot`, `fimx plot` and `fimx invert`; `fimx.io.load_dataset` reads it back.
 
 ```python
 from fimx.io import load_dataset, save_dataset
