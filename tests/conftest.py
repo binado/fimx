@@ -16,8 +16,8 @@ def J() -> xr.DataArray:
     """Return a rectangular Jacobian with reordered old labels."""
     return xr.DataArray(
         [[1, 2], [2, 0], [0, 1]],
-        dims=("old_parameter", "new_parameter"),
-        coords={"old_parameter": ["c", "a", "b"], "new_parameter": ["y", "x"]},
+        dims=("old", "new"),
+        coords={"old": ["c", "a", "b"], "new": ["y", "x"]},
     )
 
 

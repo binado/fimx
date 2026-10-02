@@ -74,7 +74,7 @@ def test_marginalization_fails_for_removed_block(values: list[list[float]]) -> N
 
 def test_reordered_rectangular_transform(F: xr.DataArray, J: xr.DataArray) -> None:
     result = transform(F, J)
-    aligned = J.sel(old_parameter=F.row.values).values
+    aligned = J.sel(old=F.row.values).values
     np.testing.assert_allclose(result.values, aligned.T @ F.values @ aligned)
     assert result.row.values.tolist() == result.col.values.tolist() == ["y", "x"]
     assert result.dtype == np.float64
@@ -84,10 +84,10 @@ def test_reordered_rectangular_transform(F: xr.DataArray, J: xr.DataArray) -> No
 def test_transform_can_expand_parameter_space(F: xr.DataArray) -> None:
     J = xr.DataArray(
         [[1, 0, 0, 1], [0, 1, 0, 1], [0, 0, 1, 1]],
-        dims=("old_parameter", "new_parameter"),
+        dims=("old", "new"),
         coords={
-            "old_parameter": ["a", "b", "c"],
-            "new_parameter": ["w", "x", "y", "z"],
+            "old": ["a", "b", "c"],
+            "new": ["w", "x", "y", "z"],
         },
     )
     np.testing.assert_allclose(transform(F, J).values, J.values.T @ F.values @ J.values)
@@ -116,25 +116,25 @@ def test_transform_can_expand_parameter_space(F: xr.DataArray) -> None:
 )
 def test_invalid_jacobians(F: xr.DataArray, J: xr.DataArray, kind: str) -> None:
     if kind == "dimensions":
-        J = J.rename(old_parameter="old")
+        J = J.rename(old="old_parameter")
     elif kind == "transposed":
         J = J.transpose()
     elif kind.startswith("missing_"):
-        J = J.drop_vars(kind.removeprefix("missing_") + "_parameter")
+        J = J.drop_vars(kind.removeprefix("missing_"))
     elif kind == "incomplete":
-        J = J.isel(old_parameter=slice(0, 2))
+        J = J.isel(old=slice(0, 2))
     elif kind == "extra":
-        J = J.reindex(old_parameter=["a", "b", "c", "d"], fill_value=0)
+        J = J.reindex(old=["a", "b", "c", "d"], fill_value=0)
     elif kind == "duplicate_old":
-        J = J.assign_coords(old_parameter=["a", "a", "b"])
+        J = J.assign_coords(old=["a", "a", "b"])
     elif kind == "duplicate_new":
-        J = J.assign_coords(new_parameter=["x", "x"])
+        J = J.assign_coords(new=["x", "x"])
     elif kind == "numeric_old":
-        J = J.assign_coords(old_parameter=[0, 1, 2])
+        J = J.assign_coords(old=[0, 1, 2])
     elif kind == "numeric_new":
-        J = J.assign_coords(new_parameter=[0, 1])
+        J = J.assign_coords(new=[0, 1])
     elif kind.startswith("empty_"):
-        J = J.isel({kind.removeprefix("empty_") + "_parameter": slice(0, 0)})
+        J = J.isel({kind.removeprefix("empty_"): slice(0, 0)})
     elif kind == "complex":
         J = J.astype(complex)
     elif kind == "nonnumeric":
