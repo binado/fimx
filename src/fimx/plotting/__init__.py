@@ -35,6 +35,7 @@ def plot(
     datasets: Mapping[str, xr.Dataset],
     *,
     parameters: Sequence[str] | None = None,
+    parameter_labels: Mapping[str, str] | None = None,
     filled: bool = True,
     method: InversionMethod = "cholesky",
     backend: str = "getdist",
@@ -52,6 +53,9 @@ def plot(
         Unique parameters present in every forecast, in plotting order.
         Defaults to their intersection in the first forecast's order.
         Omitted parameters are marginalized over.
+    parameter_labels : mapping of str to str, optional
+        Display labels keyed by parameter name. Parameters without a supplied
+        display label keep their original name.
     filled : bool
         Whether to fill two-dimensional contours. Default is True.
     method : {'cholesky', 'inv', 'pinv'}
@@ -74,8 +78,8 @@ def plot(
     TypeError
         If containers have incorrect types or backend options are reserved.
     ValueError
-        If data are invalid, no parameters are shared, or backend or inversion
-        method is unknown.
+        If data or parameter labels are invalid, no parameters are shared, or
+        backend or inversion method is unknown.
     KeyError
         If a requested parameter is unavailable in any forecast.
     numpy.linalg.LinAlgError
@@ -87,9 +91,15 @@ def plot(
     if backend not in _BACKENDS:
         raise ValueError(f"Unknown plotting backend {backend!r}. Available: getdist.")
     implementation = _BACKENDS[backend]()
-    names, distributions = _prepare(datasets, parameters, method)
+    names, labels, distributions = _prepare(
+        datasets, parameters, method, parameter_labels=parameter_labels
+    )
     return implementation(
-        names, distributions, filled=filled, backend_kwargs=backend_kwargs
+        names,
+        labels,
+        distributions,
+        filled=filled,
+        backend_kwargs=backend_kwargs,
     )
 
 

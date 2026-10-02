@@ -12,6 +12,7 @@ from .base import PlotBackend, _Gaussian
 
 def plot(
     names: Sequence[str],
+    parameter_labels: Sequence[str],
     distributions: Sequence[_Gaussian],
     *,
     filled: bool = True,
@@ -22,7 +23,9 @@ def plot(
     Parameters
     ----------
     names : sequence of str
-        Ordered parameter names matching the distributions' axes.
+        Ordered parameter names used to identify the distributions' axes.
+    parameter_labels : sequence of str
+        Ordered display labels matching ``names``.
     distributions : sequence of _Gaussian
         Prepared marginal means and covariances, one per forecast.
     filled : bool
@@ -47,8 +50,15 @@ def plot(
             f"Backend options cannot override: {', '.join(sorted(reserved))}."
         )
     names = list(names)
+    parameter_labels = list(parameter_labels)
     roots = [
-        GaussianND(item.mean, item.covariance, names=names, label=item.label)
+        GaussianND(
+            item.mean,
+            item.covariance,
+            names=names,
+            labels=parameter_labels,
+            label=item.label,
+        )
         for item in distributions
     ]
     plotter = plots.get_subplot_plotter()

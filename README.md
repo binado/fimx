@@ -154,16 +154,19 @@ Datasets that contain `fisher` and `fiducials`:
 uv add 'fimx[io,plotting]'
 fimx-plot --file survey-a.nc --file survey-b.nc \
     --figure-file constraints.png --figure-dpi 200 \
-    --parameters a b --no-filled --backend getdist \
+    --parameters a b --plot-label-var latex_label --no-filled --backend getdist \
     --backend-kwargs '{"contour_colors": ["C0", "C1"]}'
 ```
 
 Each file stem becomes a legend label, so stems must be unique. The output
 defaults to `plot.png` at 150 dpi. `--parameters` selects and orders
-parameters, `--no-filled` draws line contours, `--inversion-method` picks
-`cholesky`, `inv`, or `pinv`, `--backend` picks a backend, and
-`--backend-kwargs` takes a JSON object. `fimx.io.load_dataset(path)` loads the
-same files from Python.
+parameters. `--plot-label-var` optionally names a string variable on the
+`row` dimension that supplies axis labels; it must exist in every file, and
+labels for shared plotted parameters must agree across files. Without this
+option, parameter names are used. `--no-filled` draws line contours,
+`--inversion-method` picks `cholesky`, `inv`, or `pinv`, `--backend` picks a
+backend, and `--backend-kwargs` takes a JSON object.
+`fimx.io.load_dataset(path)` loads the same files from Python.
 
 `fimx-invert` reports matrix conditioning and inversion residuals from either
 a standalone matrix DataArray or a Dataset containing `fisher`:
