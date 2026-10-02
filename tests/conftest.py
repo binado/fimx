@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 import xarray as xr
 
-from fisharr import matrix
+from fimx import matrix
 
 
 @pytest.fixture

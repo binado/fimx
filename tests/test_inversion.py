@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 import xarray as xr
 
-from fisharr import errors, inv, matrix
+from fimx import errors, inv, matrix
 
 
 def test_labeled_inverse_and_errors(F: xr.DataArray) -> None:

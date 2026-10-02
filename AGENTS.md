@@ -1,6 +1,6 @@
 ## About the package
 
-`fisharr` is a Python package providing eight functions to construct, manipulate,
+`fimx` is a Python package providing eight functions to construct, manipulate,
 and analyze dense Fisher matrices represented as labeled `xarray.DataArray`
 objects. Matrices have fixed `("row", "col")` dimensions and matching ordered
 parameter coordinates. Storage and metadata are delegated to xarray.

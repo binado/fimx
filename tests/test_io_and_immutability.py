@@ -3,7 +3,7 @@ from pathlib import Path
 import numpy as np
 import xarray as xr
 
-from fisharr import (
+from fimx import (
     combine,
     errors,
     fix,

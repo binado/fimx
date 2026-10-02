@@ -1,15 +1,15 @@
-# fisharr
+# fimx
 
-`fisharr` provides functions for dense Fisher information matrices stored
+`fimx` provides functions for dense Fisher information matrices stored
 as ordinary `xarray.DataArray` objects. NumPy handles the computation; xarray
 handles labels, metadata containers, and persistence.
 
 ```sh
-uv add fisharr
+uv add fimx
 # Optional NetCDF backend:
-uv add 'fisharr[io]'
+uv add 'fimx[io]'
 # Optional Gaussian plotting backend:
-uv add 'fisharr[plotting]'
+uv add 'fimx[plotting]'
 ```
 
 ## Array contract
@@ -36,7 +36,7 @@ You can also supply arrays created directly with xarray if they meet the contrac
 ```python
 import numpy as np
 import xarray as xr
-from fisharr import (
+from fimx import (
     matrix,
     fix,
     marginalize,
@@ -131,7 +131,7 @@ returns independent copies and does not require positive definiteness.
 Variable names `fisher`, `row`, and `col` are reserved.
 
 ```python
-from fisharr import dataset, plot
+from fimx import dataset, plot
 
 fiducials = xr.DataArray([1.0, 2.0], dims="row", coords={"row": ["a", "b"]})
 survey_a = dataset(F, {"fiducials": fiducials, "units": ["km", "s"]})
@@ -173,28 +173,28 @@ Unknown backend names raise `ValueError`.
 
 ### Command-line corner plots
 
-Install both optional dependency groups and run `fisharr-plot` with one or more
+Install both optional dependency groups and run `fimx-plot` with one or more
 NetCDF Datasets containing `fisher` and `fiducials`:
 
 ```sh
-uv add 'fisharr[io,plotting]'
-fisharr-plot --file survey-a.nc --file survey-b.nc \
+uv add 'fimx[io,plotting]'
+fimx-plot --file survey-a.nc --file survey-b.nc \
     --figure-file constraints.png --figure-dpi 200 \
     --parameters a b --no-filled --backend getdist \
     --backend-kwargs '{"contour_colors": ["C0", "C1"]}'
 ```
 
 Each input filename stem becomes its legend label, so stems must be unique.
-The output defaults to `plot.png` at 150 dpi. `fisharr.io.load_dataset(path)`
+The output defaults to `plot.png` at 150 dpi. `fimx.io.load_dataset(path)`
 loads NetCDF Datasets with the optional `h5netcdf` engine.
 Use `--parameters` to select and order parameters, `--no-filled` to draw line
 contours, `--backend` to select a backend, and `--backend-kwargs` to pass a JSON
 object of backend-specific options.
 
 GetDist and Matplotlib are optional and loaded only when plotting is requested.
-`fisharr.plotting.base.PlotBackend` defines the callable interface for additional
+`fimx.plotting.base.PlotBackend` defines the callable interface for additional
 backends. Shared preparation lives in `base`, backend-specific rendering in
-`getdist`, and `fisharr.plotting.plot` selects the registered implementation.
+`getdist`, and `fimx.plotting.plot` selects the registered implementation.
 
 ### Other metadata
 
@@ -213,7 +213,7 @@ ds = xr.Dataset(
 )
 sigma = errors(ds["fisher"])
 
-# The optional io extra supplies h5netcdf. There is no fisharr file format.
+# The optional io extra supplies h5netcdf. There is no fimx file format.
 F.to_netcdf("fisher.nc", engine="h5netcdf")
 restored = xr.load_dataarray("fisher.nc", engine="h5netcdf")
 C_restored = inv(restored)

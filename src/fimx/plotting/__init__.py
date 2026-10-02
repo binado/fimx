@@ -22,7 +22,7 @@ def _getdist() -> PlotBackend:
             raise
         raise ImportError(
             "The GetDist backend requires plotting dependencies. "
-            "Install them with uv add 'fisharr[plotting]'."
+            "Install them with uv add 'fimx[plotting]'."
         ) from exc
     return plot
 

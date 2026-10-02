@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 import xarray as xr
 
-from fisharr import combine, gaussian_prior, matrix
+from fimx import combine, gaussian_prior, matrix
 
 
 def test_identical_and_reordered_combination(F: xr.DataArray) -> None:
