@@ -33,8 +33,8 @@ posterior = combine(F, prior)
 | `expand(F, parameters)` | Embed in a larger or reordered parameter set, filling with zeros. |
 | `fix(F, parameters)` | Remove names through a principal submatrix. |
 | `marginalize(F, parameters)` | Remove names through the Schur complement. |
-| `inv(F)` | Return the inverse using Cholesky. |
-| `errors(F)` | Return marginalized standard deviations. |
+| `inv(F, method="cholesky")` | Return the inverse; `method` is `cholesky`, `inv`, or `pinv`. |
+| `errors(F, method="cholesky")` | Return marginalized standard deviations. |
 | `transform(F, jacobian)` | Change variables using `J.T @ F @ J`. |
 | `combine(*matrices)` | Sum independent information over the parameter union. |
 | `gaussian_prior(sigmas)` | Construct diagonal information `1 / sigma**2`. |
@@ -66,7 +66,10 @@ Behavior worth knowing:
 - `gaussian_prior` takes **standard deviations**, not information values.
 - Failures are explicit: `ValueError` for malformed or non-finite data,
   `TypeError` for non-DataArray inputs, and `numpy.linalg.LinAlgError` for
-  singular or indefinite matrices. There is no pseudoinverse or regularization.
+  singular or indefinite matrices. By default `inv` and `errors` use Cholesky and
+  require positive definiteness. `method="inv"` only fails on exactly singular
+  matrices, and `method="pinv"` uses the pseudoinverse, which assigns zero
+  variance to unconstrained directions. There is no regularization.
 
 ### Changes of variables
 
@@ -154,7 +157,8 @@ fimx-plot --file survey-a.nc --file survey-b.nc \
 
 Each file stem becomes a legend label, so stems must be unique. The output
 defaults to `plot.png` at 150 dpi. `--parameters` selects and orders
-parameters, `--no-filled` draws line contours, `--backend` picks a backend, and
+parameters, `--no-filled` draws line contours, `--inversion-method` picks
+`cholesky`, `inv`, or `pinv`, `--backend` picks a backend, and
 `--backend-kwargs` takes a JSON object. `fimx.io.load_dataset(path)` loads the
 same files from Python.
 

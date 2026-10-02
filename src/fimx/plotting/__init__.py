@@ -7,7 +7,8 @@ from typing import TYPE_CHECKING, Any
 
 import xarray as xr
 
-from .base import PlotBackend
+from ..inversion import InversionMethod
+from .base import PlotBackend, _prepare
 
 if TYPE_CHECKING:
     from matplotlib.figure import Figure
@@ -35,6 +36,7 @@ def plot(
     *,
     parameters: Sequence[str] | None = None,
     filled: bool = True,
+    method: InversionMethod = "cholesky",
     backend: str = "getdist",
     backend_kwargs: Mapping[str, Any] | None = None,
 ) -> Figure:
@@ -52,6 +54,9 @@ def plot(
         Omitted parameters are marginalized over.
     filled : bool
         Whether to fill two-dimensional contours. Default is True.
+    method : {'cholesky', 'inv', 'pinv'}
+        Algorithm used to invert each full Fisher matrix; see
+        :func:`fimx.inv`. Default is ``'cholesky'``.
     backend : str
         Backend name. Currently only ``'getdist'`` is supported.
     backend_kwargs : mapping, optional
@@ -69,19 +74,22 @@ def plot(
     TypeError
         If containers have incorrect types or backend options are reserved.
     ValueError
-        If data are invalid, no parameters are shared, or backend is unknown.
+        If data are invalid, no parameters are shared, or backend or inversion
+        method is unknown.
     KeyError
         If a requested parameter is unavailable in any forecast.
     numpy.linalg.LinAlgError
-        If any complete Fisher matrix is singular or not positive definite.
+        If any complete Fisher matrix is singular (``'inv'``) or not positive
+        definite (``'cholesky'``). ``'pinv'`` never raises this.
     ImportError
         If the selected backend's optional dependencies are unavailable.
     """
     if backend not in _BACKENDS:
         raise ValueError(f"Unknown plotting backend {backend!r}. Available: getdist.")
     implementation = _BACKENDS[backend]()
+    names, distributions = _prepare(datasets, parameters, method)
     return implementation(
-        datasets, parameters=parameters, filled=filled, backend_kwargs=backend_kwargs
+        names, distributions, filled=filled, backend_kwargs=backend_kwargs
     )
 
 

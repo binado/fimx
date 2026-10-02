@@ -4,7 +4,9 @@ from argparse import ArgumentParser, BooleanOptionalAction
 from collections.abc import Sequence
 from json import loads
 from pathlib import Path
+from typing import get_args
 
+from .inversion import InversionMethod
 from .io import load_dataset
 from .plotting import plot
 
@@ -50,6 +52,13 @@ def _parser() -> ArgumentParser:
         help="Fill two-dimensional contours (default; use --no-filled for lines).",
     )
     parser.add_argument(
+        "--inversion-method",
+        dest="method",
+        choices=get_args(InversionMethod),
+        default="cholesky",
+        help="Fisher matrix inversion method (default: cholesky).",
+    )
+    parser.add_argument(
         "--backend",
         default="getdist",
         metavar="NAME",
@@ -87,6 +96,7 @@ def main(argv: Sequence[str] | None = None) -> None:
         datasets,
         parameters=args.parameters,
         filled=args.filled,
+        method=args.method,
         backend=args.backend,
         backend_kwargs=args.backend_kwargs,
     )

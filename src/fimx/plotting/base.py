@@ -11,25 +11,10 @@ import xarray as xr
 from numpy.typing import NDArray
 
 from ..construction import _labels, _real_values, _validate_matrix
-from ..inversion import inv
+from ..inversion import InversionMethod, inv
 
 if TYPE_CHECKING:
     from matplotlib.figure import Figure
-
-
-class PlotBackend(Protocol):
-    """Callable interface implemented by each plotting backend."""
-
-    def __call__(
-        self,
-        datasets: Mapping[str, xr.Dataset],
-        *,
-        parameters: Sequence[str] | None = None,
-        filled: bool = True,
-        backend_kwargs: Mapping[str, Any] | None = None,
-    ) -> Figure:
-        """Return a Figure overlaying the supplied forecasts."""
-        ...
 
 
 @dataclass(frozen=True)
@@ -39,6 +24,25 @@ class _Gaussian:
     label: str
     mean: NDArray[np.float64]
     covariance: NDArray[np.float64]
+
+
+class PlotBackend(Protocol):
+    """Callable interface implemented by each plotting backend.
+
+    Backends receive already-inverted marginal covariances and never see
+    Fisher matrices.
+    """
+
+    def __call__(
+        self,
+        names: Sequence[str],
+        distributions: Sequence[_Gaussian],
+        *,
+        filled: bool = True,
+        backend_kwargs: Mapping[str, Any] | None = None,
+    ) -> Figure:
+        """Return a Figure overlaying the supplied Gaussian distributions."""
+        ...
 
 
 def _validate_dataset(forecast: xr.Dataset) -> xr.Dataset:
@@ -64,7 +68,9 @@ def _validate_dataset(forecast: xr.Dataset) -> xr.Dataset:
 
 
 def _prepare(
-    datasets: Mapping[str, xr.Dataset], parameters: Sequence[str] | None
+    datasets: Mapping[str, xr.Dataset],
+    parameters: Sequence[str] | None,
+    method: InversionMethod = "cholesky",
 ) -> tuple[list[str], list[_Gaussian]]:
     """Validate forecasts and select marginalized Gaussian distributions."""
     if not isinstance(datasets, Mapping):
@@ -91,7 +97,7 @@ def _prepare(
                     raise KeyError(f"Parameter {name!r} is absent from {label!r}.")
     distributions = []
     for label, ds in forecasts.items():
-        covariance = inv(ds["fisher"]).sel(row=names, col=names)
+        covariance = inv(ds["fisher"], method=method).sel(row=names, col=names)
         distributions.append(
             _Gaussian(label, ds["fiducials"].sel(row=names).values, covariance.values)
         )

@@ -1,10 +1,14 @@
-"""Cholesky inversion and marginalized constraints."""
+"""Matrix inversion and marginalized constraints."""
+
+from typing import Literal, get_args
 
 import numpy as np
 import xarray as xr
 from xarray_einstats import linalg
 
 from .construction import _new_matrix, _validate_matrix
+
+InversionMethod = Literal["cholesky", "inv", "pinv"]
 
 
 def _solve(values: xr.DataArray, rhs: xr.DataArray) -> xr.DataArray:
@@ -18,13 +22,20 @@ def _solve(values: xr.DataArray, rhs: xr.DataArray) -> xr.DataArray:
     ).rename(rhs_col="col")
 
 
-def inv(F: xr.DataArray) -> xr.DataArray:
+def inv(F: xr.DataArray, *, method: InversionMethod = "cholesky") -> xr.DataArray:
     """Return the labeled inverse, or covariance of a Fisher matrix.
 
     Parameters
     ----------
     F : xarray.DataArray
         Matrix satisfying the canonical matrix contract.
+    method : {'cholesky', 'inv', 'pinv'}
+        Inversion algorithm. ``'cholesky'`` (default) requires a positive
+        definite matrix. ``'inv'`` uses ``numpy.linalg.inv`` and only fails on
+        exactly singular matrices. ``'pinv'`` uses the Moore-Penrose
+        pseudoinverse, which always succeeds but assigns zero variance to
+        unconstrained (null-space) directions, so degenerate parameters appear
+        perfectly constrained rather than unconstrained.
 
     Returns
     -------
@@ -34,28 +45,40 @@ def inv(F: xr.DataArray) -> xr.DataArray:
     Raises
     ------
     numpy.linalg.LinAlgError
-        If the matrix is singular or not positive definite.
+        If the matrix is singular (``'inv'``) or not positive definite
+        (``'cholesky'``).
     ValueError
-        If the matrix contract is violated.
+        If the matrix contract is violated or ``method`` is unknown.
     """
+    if method not in get_args(InversionMethod):
+        raise ValueError(
+            f"Unknown inversion method {method!r}. "
+            f"Available: {', '.join(get_args(InversionMethod))}."
+        )
     values, parameters = _validate_matrix(F)
-    rhs = xr.DataArray(
-        np.eye(len(parameters)),
-        dims=("row", "rhs_col"),
-        coords={"row": parameters, "rhs_col": parameters},
-    )
-    covariance = _solve(values, rhs)
-    raw = covariance.values
+    if method == "cholesky":
+        rhs = xr.DataArray(
+            np.eye(len(parameters)),
+            dims=("row", "rhs_col"),
+            coords={"row": parameters, "rhs_col": parameters},
+        )
+        raw = _solve(values, rhs).values
+    elif method == "inv":
+        raw = np.linalg.inv(values.values)
+    else:
+        raw = np.linalg.pinv(values.values, hermitian=True)
     return _new_matrix(raw / 2 + raw.T / 2, parameters)
 
 
-def errors(F: xr.DataArray) -> xr.DataArray:
+def errors(F: xr.DataArray, *, method: InversionMethod = "cholesky") -> xr.DataArray:
     """Return marginalized standard deviations from a Fisher matrix.
 
     Parameters
     ----------
     F : xarray.DataArray
         Matrix satisfying the canonical matrix contract.
+    method : {'cholesky', 'inv', 'pinv'}
+        Inversion algorithm; see :func:`inv`.
 
     Returns
     -------
@@ -65,11 +88,12 @@ def errors(F: xr.DataArray) -> xr.DataArray:
     Raises
     ------
     numpy.linalg.LinAlgError
-        If the matrix is singular or not positive definite.
+        If the matrix is singular (``'inv'``) or not positive definite
+        (``'cholesky'``).
     ValueError
-        If the matrix contract is violated.
+        If the matrix contract is violated or ``method`` is unknown.
     """
-    covariance = inv(F)
+    covariance = inv(F, method=method)
     diagonal = linalg.diagonal(covariance, dims=("row", "col"))
     return xr.DataArray(
         np.sqrt(diagonal.values),
