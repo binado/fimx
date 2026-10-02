@@ -147,12 +147,12 @@ fig = plot(
 
 ### Command line
 
-With both extras installed, `fimx-plot` draws a corner plot from NetCDF
+With both extras installed, `fimx plot` draws a corner plot from NetCDF
 Datasets that contain `fisher` and `fiducials`:
 
 ```sh
 uv add 'fimx[io,plotting]'
-fimx-plot --file survey-a.nc --file survey-b.nc \
+fimx plot --file survey-a.nc --file survey-b.nc \
     --figure-file constraints.png --figure-dpi 200 \
     --parameters a b --no-filled --backend getdist \
     --backend-kwargs '{"contour_colors": ["C0", "C1"]}'
@@ -167,14 +167,14 @@ line contours, `--inversion-method` picks `cholesky`, `inv`, or `pinv`,
 `--backend` picks a backend, and `--backend-kwargs` takes a JSON object.
 `fimx.io.load_dataset(path)` loads the same files from Python.
 
-`fimx-invert` reports matrix conditioning and inversion residuals from either
+`fimx invert` reports matrix conditioning and inversion residuals from either
 a standalone matrix DataArray or a Dataset containing `fisher`; an existing
 `covariance` is ignored:
 
 ```sh
-fimx-invert --file fisher.nc
-fimx-invert --file forecast.nc --inversion-method inv pinv --json
-fimx-invert --file forecast.nc --save forecast-with-covariance.nc
+fimx invert --file fisher.nc
+fimx invert --file forecast.nc --inversion-method inv pinv --json
+fimx invert --file forecast.nc --save forecast-with-covariance.nc
 ```
 
 All three inversion methods (`cholesky`, `inv`, and `pinv`) are evaluated by
@@ -200,7 +200,7 @@ C_restored = inv(restored)
 ```
 
 For forecasts, `fimx.io.save_dataset` writes the Dataset convention read by
-`plot`, `fimx-plot` and `fimx-invert`; `fimx.io.load_dataset` reads it back.
+`plot`, `fimx plot` and `fimx invert`; `fimx.io.load_dataset` reads it back.
 
 ```python
 from fimx.io import load_dataset, save_dataset

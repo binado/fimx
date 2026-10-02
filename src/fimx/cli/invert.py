@@ -1,55 +1,20 @@
-"""Command-line interface for diagnosing Fisher matrix inversions."""
+"""Invert subcommand."""
 
 import json
-import sys
-from argparse import ArgumentParser
 from collections.abc import Sequence
 from dataclasses import dataclass
 from math import isfinite
 from pathlib import Path
-from typing import get_args
+from typing import Annotated, get_args
 
 import numpy as np
+import typer
 import xarray as xr
 
-from .construction import _validate_matrix
-from .inversion import InversionMethod, inv
-from .io import load_dataset, save_dataset
-
-
-def _parser() -> ArgumentParser:
-    """Build the command-line argument parser."""
-    parser = ArgumentParser(description="Diagnose Fisher matrix inversions.")
-    parser.add_argument(
-        "--file",
-        type=Path,
-        required=True,
-        metavar="PATH",
-        help="NetCDF file containing a Fisher matrix.",
-    )
-    parser.add_argument(
-        "--inversion-method",
-        nargs="+",
-        choices=get_args(InversionMethod),
-        default=list(get_args(InversionMethod)),
-        metavar="METHOD",
-        help="Methods to evaluate (default: all methods).",
-    )
-    parser.add_argument(
-        "--save",
-        type=Path,
-        metavar="PATH",
-        help=(
-            "Write the Dataset with a new covariance to PATH, from the first "
-            "successful selected method in the order cholesky, inv, pinv."
-        ),
-    )
-    parser.add_argument(
-        "--json",
-        action="store_true",
-        help="Print the report as JSON.",
-    )
-    return parser
+from ..construction import _validate_matrix
+from ..inversion import InversionMethod, inv
+from ..io import load_dataset, save_dataset
+from .options import InversionMethodOption
 
 
 def _load_matrix(dataset: xr.Dataset) -> xr.DataArray:
@@ -64,7 +29,7 @@ def _load_matrix(dataset: xr.Dataset) -> xr.DataArray:
 def _save_covariance(
     path: Path,
     dataset: xr.Dataset,
-    F: xr.DataArray,
+    fisher: xr.DataArray,
     successful: Sequence[InversionMethod],
 ) -> InversionMethod:
     """Save the Dataset with a covariance from the first successful method.
@@ -78,8 +43,8 @@ def _save_covariance(
     fiducials = dataset.get("fiducials")
     save_dataset(
         path,
-        F,
-        covariance=inv(F, method=method, metadata=True),
+        fisher,
+        covariance=inv(fisher, method=method, metadata=True),
         fiducials=fiducials,
         labels=labels,
     )
@@ -174,10 +139,12 @@ class InversionReport:
 
 
 def _inversion_report(
-    path: Path, F: xr.DataArray, methods: Sequence[InversionMethod]
+    path: Path,
+    fisher: xr.DataArray,
+    methods: Sequence[InversionMethod],
 ) -> InversionReport:
     """Calculate matrix diagnostics and inversion residual summaries."""
-    matrix, parameters = _validate_matrix(F)
+    matrix, parameters = _validate_matrix(fisher)
     values = matrix.values
     eigenvalues = np.linalg.eigvalsh(values)
     results: list[MethodInversionReport] = []
@@ -209,44 +176,71 @@ def _inversion_report(
     )
 
 
-def main(argv: Sequence[str] | None = None) -> int:
-    """Load a Fisher matrix and print inversion diagnostics.
+def _methods(selected: Sequence[InversionMethodOption] | None) -> list[InversionMethod]:
+    """Return the requested methods, or every method in canonical order."""
+    options = selected if selected is not None else tuple(InversionMethodOption)
+    return [option.value for option in options]
 
-    Parameters
-    ----------
-    argv : sequence of str, optional
-        Arguments to parse. Defaults to the process command line.
 
-    Returns
-    -------
-    int
-        Zero if at least one selected inversion succeeds, otherwise one.
-    """
-    parser = _parser()
-    args = parser.parse_args(argv)
+def invert(
+    file: Annotated[
+        Path,
+        typer.Option(
+            "--file",
+            metavar="PATH",
+            help="NetCDF file containing a Fisher matrix.",
+        ),
+    ],
+    inversion_method: Annotated[
+        list[InversionMethodOption] | None,
+        typer.Option(
+            "--inversion-method",
+            show_default=False,
+            help=(
+                "Methods to evaluate (default: all methods). "
+                "List several methods or repeat the option."
+            ),
+        ),
+    ] = None,
+    save: Annotated[
+        Path | None,
+        typer.Option(
+            "--save",
+            metavar="PATH",
+            help=(
+                "Write the Dataset with a new covariance to PATH, from the first "
+                "successful selected method in the order cholesky, inv, pinv."
+            ),
+        ),
+    ] = None,
+    as_json: Annotated[
+        bool,
+        typer.Option("--json", help="Print the report as JSON."),
+    ] = False,
+) -> None:
+    """Diagnose Fisher matrix inversions."""
     try:
-        dataset = load_dataset(args.file)
+        dataset = load_dataset(file)
         fisher = _load_matrix(dataset)
-        inversion_report = _inversion_report(args.file, fisher, args.inversion_method)
+        methods = _methods(inversion_method)
+        inversion_report = _inversion_report(file, fisher, methods)
         successful = [
             result.method for result in inversion_report.methods if result.success
         ]
         saved = (
-            _save_covariance(args.save, dataset, fisher, successful)
-            if args.save is not None and successful
+            _save_covariance(save, dataset, fisher, successful)
+            if save is not None and successful
             else None
         )
     except (OSError, ValueError) as error:
-        parser.error(str(error))
+        typer.echo(f"Error: {error}", err=True)
+        raise typer.Exit(2) from error
 
-    if args.json:
-        print(json.dumps(inversion_report.asdict(), allow_nan=False))
+    if as_json:
+        typer.echo(json.dumps(inversion_report.asdict(), allow_nan=False))
     else:
-        print(inversion_report)
+        typer.echo(inversion_report)
     if saved is not None:
-        print(f"Saved {saved} covariance to {args.save}", file=sys.stderr)
-    return int(not successful)
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())
+        typer.echo(f"Saved {saved} covariance to {save}", err=True)
+    if not successful:
+        raise typer.Exit(1)

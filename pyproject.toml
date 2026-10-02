@@ -19,6 +19,7 @@ classifiers = [
 requires-python = ">=3.12"
 dependencies = [
     "numpy",
+    "typer>=0.27.2",
     "xarray",
     "xarray-einstats>=0.10.0",
 ]
@@ -34,8 +35,7 @@ Issues = "https://github.com/binado/fimx/issues"
 Changelog = "https://github.com/binado/fimx/blob/main/CHANGELOG.md"
 
 [project.scripts]
-fimx-plot = "fimx.cli:main"
-fimx-invert = "fimx.invert_cli:main"
+fimx = "fimx.cli:main"
 
 [build-system]
 requires = ["uv_build>=0.12.7,<0.13.0"]
