@@ -64,9 +64,9 @@ def inv(F: xr.DataArray, *, method: InversionMethod = "cholesky") -> xr.DataArra
         )
         raw = _solve(values, rhs).values
     elif method == "inv":
-        raw = np.linalg.inv(values.values)
+        raw = linalg.inv(values, dims=("row", "col")).values
     else:
-        raw = np.linalg.pinv(values.values, hermitian=True)
+        raw = linalg.pinv(values, dims=("row", "col"), hermitian=True).values
     return _new_matrix(raw / 2 + raw.T / 2, parameters)
 
 
