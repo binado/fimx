@@ -1,6 +1,7 @@
 """Command-line interface for diagnosing Fisher matrix inversions."""
 
 import json
+import sys
 from argparse import ArgumentParser
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -13,7 +14,7 @@ import xarray as xr
 
 from .construction import _validate_matrix
 from .inversion import InversionMethod, inv
-from .io import load_dataset
+from .io import load_dataset, save_dataset
 
 
 def _parser() -> ArgumentParser:
@@ -35,6 +36,15 @@ def _parser() -> ArgumentParser:
         help="Methods to evaluate (default: all methods).",
     )
     parser.add_argument(
+        "--save",
+        type=Path,
+        metavar="PATH",
+        help=(
+            "Write the Dataset with a new covariance to PATH, from the first "
+            "successful selected method in the order cholesky, inv, pinv."
+        ),
+    )
+    parser.add_argument(
         "--json",
         action="store_true",
         help="Print the report as JSON.",
@@ -42,14 +52,38 @@ def _parser() -> ArgumentParser:
     return parser
 
 
-def _load_matrix(path: Path) -> xr.DataArray:
-    """Load a standalone DataArray or the Fisher variable from a Dataset."""
-    dataset = load_dataset(path)
+def _load_matrix(dataset: xr.Dataset) -> xr.DataArray:
+    """Return the Fisher variable of a Dataset, or its only variable."""
     if "fisher" in dataset.data_vars:
         return dataset["fisher"]
     if len(dataset.data_vars) == 1:
         return dataset[next(iter(dataset.data_vars))]
     raise ValueError("Dataset must contain a 'fisher' variable.")
+
+
+def _save_covariance(
+    path: Path,
+    dataset: xr.Dataset,
+    F: xr.DataArray,
+    successful: Sequence[InversionMethod],
+) -> InversionMethod:
+    """Save the Dataset with a covariance from the first successful method.
+
+    Any covariance already in the Dataset is ignored and replaced.
+    """
+    method = next(
+        method for method in get_args(InversionMethod) if method in successful
+    )
+    labels = dataset["labels"].values.tolist() if "labels" in dataset else None
+    fiducials = dataset.get("fiducials")
+    save_dataset(
+        path,
+        F,
+        covariance=inv(F, method=method, metadata=True),
+        fiducials=fiducials,
+        labels=labels,
+    )
+    return method
 
 
 def _json_number(value: float) -> float | None:
@@ -191,8 +225,17 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = _parser()
     args = parser.parse_args(argv)
     try:
-        fisher = _load_matrix(args.file)
+        dataset = load_dataset(args.file)
+        fisher = _load_matrix(dataset)
         inversion_report = _inversion_report(args.file, fisher, args.inversion_method)
+        successful = [
+            result.method for result in inversion_report.methods if result.success
+        ]
+        saved = (
+            _save_covariance(args.save, dataset, fisher, successful)
+            if args.save is not None and successful
+            else None
+        )
     except (OSError, ValueError) as error:
         parser.error(str(error))
 
@@ -200,7 +243,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(json.dumps(inversion_report.asdict(), allow_nan=False))
     else:
         print(inversion_report)
-    return int(not any(result.success for result in inversion_report.methods))
+    if saved is not None:
+        print(f"Saved {saved} covariance to {args.save}", file=sys.stderr)
+    return int(not successful)
 
 
 if __name__ == "__main__":

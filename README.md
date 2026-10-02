@@ -168,18 +168,25 @@ line contours, `--inversion-method` picks `cholesky`, `inv`, or `pinv`,
 `fimx.io.load_dataset(path)` loads the same files from Python.
 
 `fimx-invert` reports matrix conditioning and inversion residuals from either
-a standalone matrix DataArray or a Dataset containing `fisher`:
+a standalone matrix DataArray or a Dataset containing `fisher`; an existing
+`covariance` is ignored:
 
 ```sh
 fimx-invert --file fisher.nc
 fimx-invert --file forecast.nc --inversion-method inv pinv --json
+fimx-invert --file forecast.nc --save forecast-with-covariance.nc
 ```
 
 All three inversion methods (`cholesky`, `inv`, and `pinv`) are evaluated by
 default. Each method reports the maximum absolute element of `F @ F_inv - I`;
 methods that cannot invert the matrix report their error while the remaining
 methods continue. The report also includes the condition number, numerical
-rank, eigenvalue range, and positive-definite status.
+rank, eigenvalue range, and positive-definite status. `--save PATH` writes the
+Dataset, with its `fiducials` and `labels`, plus a new `covariance` from the
+first successful selected method in the order `cholesky`, `inv`, `pinv`; the
+method is reported on stderr and recorded in the covariance's `attrs` together
+with its condition number and residual. Nothing is written if every selected
+method fails.
 
 ## Storage
 

@@ -14,6 +14,8 @@ change before 1.0.
   inverse residual in the result's `attrs`.
 - `fimx.io.save_dataset` to write a forecast with optional `covariance`,
   `fiducials` and plotting `labels`.
+- `--save` option for `fimx-invert`, which writes the Dataset with a freshly
+  computed covariance.
 - `plot` and `fimx-plot` use an optional `labels` variable for axis labels.
 
 ### Removed
