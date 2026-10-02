@@ -1,6 +1,9 @@
 ## About the package
 
-`fisharr` is a python package that provides a `FisherMatrix` class with helper methods for dealing with Fisher matrices. It allows users to manipulate, and analyze Fisher matrices.
+`fisharr` is a Python package providing eight functions to construct, manipulate,
+and analyze dense Fisher matrices represented as labeled `xarray.DataArray`
+objects. Matrices have fixed `("row", "col")` dimensions and matching ordered
+parameter coordinates. Storage and metadata are delegated to xarray.
 
 ## Project management
 

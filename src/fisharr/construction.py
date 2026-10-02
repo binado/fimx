@@ -1,84 +1,100 @@
-from __future__ import annotations
+"""Construction and shared validation of labeled dense matrices."""
 
-from collections.abc import Hashable, Sequence
-from typing import TYPE_CHECKING, Mapping, TypeAlias
+from collections.abc import Sequence
 
 import numpy as np
-import numpy.typing as npt
 import xarray as xr
-
-from .accessors import get_matrix_dims
-from .validation import ensure_dims, is_square_matrix
-
-if TYPE_CHECKING:
-    from numpy.typing import ArrayLike
-
-MatrixDims: TypeAlias = tuple[Hashable, Hashable]
+from numpy.typing import ArrayLike, NDArray
 
 
-def normalize_dataarray(da: xr.DataArray) -> xr.DataArray:
-    ensure_dims(da, expected=2)
-    is_square_matrix(da, raise_exception=True)
-    row, col = get_matrix_dims(da)
-    coords = da.coords.get(row, da.coords.get(col, None))
-    if coords is None:
-        raise ValueError("Matrix dimensions must be present as coordinates.")
-
-    return da.assign_coords({row: coords, col: coords})
-
-
-def normalize_dataset(ds: xr.Dataset, key: Hashable) -> xr.Dataset:
-    da = ds[key]
-    da_normalized = normalize_dataarray(da)
-    return ds.assign({key: da_normalized})
+def _labels(parameters: Sequence[str], *, name: str) -> list[str]:
+    """Validate a nonempty sequence of unique string labels."""
+    if isinstance(parameters, str):
+        # A bare string is an invalid label sequence, even for one parameter.
+        raise ValueError(f"{name} must be a sequence of parameter names.")  # noqa: TRY004
+    labels = list(parameters)
+    if not labels or any(not isinstance(label, str) for label in labels):
+        raise ValueError(f"{name} must be a nonempty sequence of unique string labels.")
+    if len(set(labels)) != len(labels):
+        raise ValueError(f"{name} must contain unique string labels.")
+    return labels
 
 
-def build_dataarray_from_array(
-    array: ArrayLike,
-    parameters: Sequence[Hashable],
-    matrix_dims: tuple[Hashable, Hashable],
-    batch_dims: Sequence[Hashable] | None = None,
-    batch_coords: Mapping[Hashable, ArrayLike | xr.Coordinates] | None = None,
-    **kwargs,
-) -> xr.DataArray:
-    array = np.asarray(array)
-    ensure_dims(array, expected=2)
-    is_square_matrix(array, raise_exception=True)
-    if array.shape[-1] != len(parameters):
-        raise ValueError("parameters length must match matrix size.")
-
-    expected_batch_dims = array.ndim - 2
-    if batch_dims is None and expected_batch_dims > 0:
-        raise ValueError(
-            "batch_dims must be provided for arrays with more than 2 dimensions."
-        )
-    batch_dims_as_tuple = tuple(batch_dims or ())
-    if len(batch_dims_as_tuple) != expected_batch_dims:
-        raise ValueError("batch_dims length must match array batch dimensions.")
-
-    dims = batch_dims_as_tuple + matrix_dims
-    coords: dict[Hashable, Sequence[Hashable] | ArrayLike | xr.Coordinates] = {
-        dim: parameters for dim in matrix_dims
-    }
-    if batch_coords is not None:
-        coords.update({dim: batch_coords[dim] for dim in batch_dims_as_tuple})
-
-    return xr.DataArray(array, dims=dims, coords=coords, **kwargs)
+def _real_values(values: ArrayLike) -> NDArray[np.float64]:
+    """Convert finite, real numeric data to float64."""
+    array = np.asarray(values)
+    if array.dtype.kind not in "iuf":
+        raise ValueError("Values must be real numeric data.")
+    with np.errstate(over="ignore", invalid="ignore"):
+        result = np.asarray(array, dtype=np.float64)
+    if not np.all(np.isfinite(result)):
+        raise ValueError("Values must be finite.")
+    return result
 
 
-def _submatrix_numpy(
-    values: npt.NDArray, rows: list[int], cols: list[int]
-) -> npt.NDArray:
-    if values.ndim == 2:
-        return values[np.ix_(rows, cols)]
-    return np.take(np.take(values, rows, axis=1), cols, axis=2)
+def _coordinate_labels(array: xr.DataArray, dimension: str) -> list[str]:
+    """Read an explicit one-dimensional parameter coordinate."""
+    if dimension not in array.coords or array.coords[dimension].dims != (dimension,):
+        raise ValueError(f"An explicit coordinate for {dimension!r} is required.")
+    return _labels(array.coords[dimension].values.tolist(), name=dimension)
 
 
-def partition_matrices(
-    values: npt.NDArray, idx_keep: list[int], idx_drop: list[int]
-) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray]:
-    f_kk = _submatrix_numpy(values, idx_keep, idx_keep)
-    f_kd = _submatrix_numpy(values, idx_keep, idx_drop)
-    f_dd = _submatrix_numpy(values, idx_drop, idx_drop)
-    f_dk = _submatrix_numpy(values, idx_drop, idx_keep)
-    return f_kk, f_kd, f_dd, f_dk
+def _validate_matrix(F: xr.DataArray) -> tuple[NDArray[np.float64], list[str]]:
+    """Validate a canonical matrix without checking positive definiteness."""
+    if not isinstance(F, xr.DataArray):
+        raise TypeError("Matrix inputs must be xarray.DataArray objects.")
+    if F.dims != ("row", "col"):
+        raise ValueError("Matrix dimensions must be exactly ('row', 'col').")
+    if F.shape[0] == 0 or F.shape[0] != F.shape[1]:
+        raise ValueError("Matrices must be nonempty and square.")
+    parameters = _coordinate_labels(F, "row")
+    if parameters != _coordinate_labels(F, "col"):
+        raise ValueError("Row and column parameter coordinates must match in order.")
+    values = _real_values(F.values)
+    if not np.allclose(values, values.T, rtol=1e-10, atol=1e-12):
+        raise ValueError("Matrices must be symmetric.")
+    return values, parameters
+
+
+def _new_matrix(values: ArrayLike, parameters: Sequence[str]) -> xr.DataArray:
+    """Create a fresh matrix with only canonical coordinates."""
+    labels = list(parameters)
+    return xr.DataArray(
+        _real_values(values).copy(),
+        dims=("row", "col"),
+        coords={"row": labels, "col": labels.copy()},
+    )
+
+
+def matrix(values: ArrayLike, parameters: Sequence[str]) -> xr.DataArray:
+    """Construct a labeled, symmetric dense matrix.
+
+    Parameters
+    ----------
+    values : array_like
+        Nonempty square array of finite, real numeric values.
+    parameters : sequence of str
+        Unique parameter names, in matrix order.
+
+    Returns
+    -------
+    xarray.DataArray
+        Fresh float64 matrix with dimensions ``('row', 'col')``.
+
+    Raises
+    ------
+    ValueError
+        If the values or parameter names violate the matrix contract.
+
+    Notes
+    -----
+    Symmetry uses ``rtol=1e-10`` and ``atol=1e-12``. Positive definiteness
+    is checked only by operations requiring a Cholesky solve.
+    """
+    labels = _labels(parameters, name="parameters")
+    array = _real_values(values)
+    if array.ndim != 2 or array.shape != (len(labels), len(labels)):
+        raise ValueError("Values must be square and match the parameter count.")
+    result = _new_matrix(array, labels)
+    _validate_matrix(result)
+    return result
