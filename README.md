@@ -171,6 +171,21 @@ defaults. `backend_kwargs` forwards options to `triangle_plot`, excluding
 `roots`, `params`, `legend_labels`, and `filled`, which the wrapper controls.
 Unknown backend names raise `ValueError`.
 
+### Command-line corner plots
+
+Install both optional dependency groups and run `fisharr-plot` with one or more
+NetCDF Datasets containing `fisher` and `fiducials`:
+
+```sh
+uv add 'fisharr[io,plotting]'
+fisharr-plot --file survey-a.nc --file survey-b.nc \
+    --figure-file constraints.png --figure-dpi 200
+```
+
+Each input filename stem becomes its legend label, so stems must be unique.
+The output defaults to `plot.png` at 150 dpi. `fisharr.io.load_dataset(path)`
+loads NetCDF Datasets with the optional `h5netcdf` engine.
+
 GetDist and Matplotlib are optional and loaded only when plotting is requested.
 `fisharr.plotting.base.PlotBackend` defines the callable interface for additional
 backends. Shared preparation lives in `base`, backend-specific rendering in
