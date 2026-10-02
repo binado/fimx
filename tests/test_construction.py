@@ -6,12 +6,23 @@ import xarray as xr
 from numpy.typing import ArrayLike
 
 import fimx
-from fimx import combine, errors, expand, fix, inv, marginalize, matrix, transform
+from fimx import (
+    combine,
+    errors,
+    expand,
+    fix,
+    inv,
+    marginalize,
+    matrix,
+    transform,
+    vector,
+)
 
 
 def test_public_api() -> None:
     assert set(fimx.__all__) == {
         "matrix",
+        "vector",
         "fix",
         "marginalize",
         "inv",
@@ -40,6 +51,41 @@ def test_construction() -> None:
     result.coords["row"].values[0] = "z"
     assert values[0, 0] == 4
     assert parameters == ["a", "b"]
+
+
+def test_vector_construction() -> None:
+    values = np.array([4, 1], dtype=np.int32)
+    parameters = ["a", "b"]
+    result = vector(values, parameters)
+    assert result.dims == ("row",)
+    assert set(result.coords) == {"row"}
+    assert result.dtype == values.dtype
+    assert result.row.values.tolist() == parameters
+    np.testing.assert_array_equal(result.values, values)
+    assert not np.shares_memory(result.values, values)
+    result.values[0] = 10
+    result.coords["row"].values[0] = "z"
+    assert values[0] == 4
+    assert parameters == ["a", "b"]
+
+
+@pytest.mark.parametrize(
+    ("values", "parameters"),
+    [
+        (np.ones((2, 2)), ["a", "b"]),
+        ([1, 2], ["a"]),
+        ([1], ["a", "b"]),
+        ([], []),
+        ([1, 2], ["a", "a"]),
+        ([1, 2], [1, 2]),
+        ([1], "a"),
+    ],
+)
+def test_invalid_vector_construction(
+    values: ArrayLike, parameters: Sequence[str]
+) -> None:
+    with pytest.raises(ValueError):
+        vector(values, parameters)
 
 
 @pytest.mark.parametrize(

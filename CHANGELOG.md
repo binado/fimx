@@ -7,6 +7,10 @@ change before 1.0.
 
 ## [Unreleased]
 
+### Added
+
+- `vector()` for constructing labeled one-dimensional parameter arrays.
+
 ## [0.2.0]
 
 ### Added
