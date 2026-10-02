@@ -133,9 +133,7 @@ Variable names `fisher`, `row`, and `col` are reserved.
 ```python
 from fisharr import dataset, plot
 
-fiducials = xr.DataArray(
-    [1.0, 2.0], dims="row", coords={"row": ["a", "b"]}
-)
+fiducials = xr.DataArray([1.0, 2.0], dims="row", coords={"row": ["a", "b"]})
 survey_a = dataset(F, {"fiducials": fiducials, "units": ["km", "s"]})
 survey_b = dataset(2 * F, {"fiducials": fiducials})
 
