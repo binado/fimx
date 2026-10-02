@@ -10,8 +10,7 @@ import numpy as np
 import xarray as xr
 from numpy.typing import NDArray
 
-from ..construction import _labels
-from ..datasets import _validate_dataset
+from ..construction import _labels, _real_values, _validate_matrix
 from ..inversion import inv
 
 if TYPE_CHECKING:
@@ -40,6 +39,28 @@ class _Gaussian:
     label: str
     mean: NDArray[np.float64]
     covariance: NDArray[np.float64]
+
+
+def _validate_dataset(forecast: xr.Dataset) -> xr.Dataset:
+    """Validate the Fisher matrix and numeric reference values for plotting."""
+    if not isinstance(forecast, xr.Dataset):
+        raise TypeError("Plot inputs must be xarray.Dataset objects.")
+    if not {"fisher", "fiducials"}.issubset(forecast.data_vars):
+        raise ValueError("Datasets must contain 'fisher' and 'fiducials' variables.")
+    fisher, labels = _validate_matrix(forecast["fisher"])
+    reference = forecast["fiducials"]
+    if reference.dims != ("row",):
+        raise ValueError("Fiducial dimensions must be exactly ('row',).")
+    return xr.Dataset(
+        {
+            "fisher": fisher,
+            "fiducials": xr.DataArray(
+                _real_values(reference.values).copy(),
+                dims="row",
+                coords={"row": labels},
+            ),
+        }
+    )
 
 
 def _prepare(

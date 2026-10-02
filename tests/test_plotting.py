@@ -28,7 +28,14 @@ def close_figures() -> Iterator[None]:
 @pytest.fixture
 def forecast(F: xr.DataArray) -> xr.Dataset:
     """Return a forecast with distinct reference values."""
-    return dataset(F, xr.DataArray([1, 2, 3], dims="row", coords={"row": F.row.values}))
+    return dataset(
+        F,
+        {
+            "fiducials": xr.DataArray(
+                [1, 2, 3], dims="row", coords={"row": F.row.values}
+            )
+        },
+    )
 
 
 def test_overlay_and_immutability(forecast: xr.Dataset) -> None:
@@ -59,7 +66,7 @@ def test_overlay_centers(forecast: xr.Dataset) -> None:
 def test_intersection_order_and_direct_dataset(forecast: xr.Dataset) -> None:
     other = dataset(
         matrix([[2, 0], [0, 3]], ["c", "a"]),
-        xr.DataArray([3, 1], dims="row", coords={"row": ["c", "a"]}),
+        {"fiducials": xr.DataArray([3, 1], dims="row", coords={"row": ["c", "a"]})},
     )
     forecast["metadata"] = xr.DataArray("example")
     figure = plot({"first": forecast, "second": other}, filled=False)
@@ -69,7 +76,11 @@ def test_intersection_order_and_direct_dataset(forecast: xr.Dataset) -> None:
 def test_marginalized_width_and_center() -> None:
     forecast = dataset(
         matrix([[2, 1], [1, 2]], ["a", "nuisance"]),
-        xr.DataArray([5, 10], dims="row", coords={"row": ["a", "nuisance"]}),
+        {
+            "fiducials": xr.DataArray(
+                [5, 10], dims="row", coords={"row": ["a", "nuisance"]}
+            )
+        },
     )
     figure = plot({"survey": forecast}, parameters=["a"])
     x, density = figure.axes[0].lines[0].get_data()
@@ -118,6 +129,7 @@ def test_plot_failures(forecast: xr.Dataset) -> None:
     with pytest.raises(ValueError, match="must contain"):
         plot({"survey": forecast.drop_vars("fiducials")})
     invalid = forecast.copy(deep=True)
+    invalid["fiducials"] = invalid.fiducials.astype(float)
     invalid.fiducials.values[0] = np.nan
     with pytest.raises(ValueError, match="finite"):
         plot({"survey": invalid})
@@ -128,6 +140,15 @@ def test_plot_failures(forecast: xr.Dataset) -> None:
     unrelated = forecast.assign_coords(row=["x", "y", "z"], col=["x", "y", "z"])
     with pytest.raises(ValueError, match="no shared"):
         plot({"survey": forecast, "other": unrelated})
+
+
+@pytest.mark.parametrize(
+    "values", [[1, np.inf, 3], [1j, 2j, 3j], ["a", "b", "c"], np.eye(3)]
+)
+def test_plot_validates_fiducials(F: xr.DataArray, values: object) -> None:
+    forecast = dataset(F, {"fiducials": values})  # ty: ignore[invalid-argument-type]
+    with pytest.raises(ValueError):
+        plot({"survey": forecast})
 
 
 @pytest.mark.parametrize("blocked", ["getdist", "matplotlib"])
@@ -145,7 +166,7 @@ sys.meta_path.insert(0, BlockOptional())
 import fisharr
 import xarray as xr
 F = fisharr.matrix([[1]], ['a'])
-ds = fisharr.dataset(F, xr.DataArray([0], dims='row', coords={'row': ['a']}))
+ds = fisharr.dataset(F, {'fiducials': [0]})
 assert 'getdist' not in sys.modules
 assert 'matplotlib' not in sys.modules
 try:

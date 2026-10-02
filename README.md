@@ -121,10 +121,14 @@ outputs that cannot be represented as finite float64 values raise `ValueError`.
 ### Forecast Datasets and plotting
 
 Keep fiducials separate from the Fisher matrix, then use `dataset()` to combine
-them with shared `row` coordinates. Fiducials must be a finite, real DataArray
-on `row` with exactly the matrix's parameter set. The helper reorders fiducials
-to match the matrix and returns independent float64 copies. It does not require
-positive definiteness.
+them and other metadata with shared parameter coordinates. Pass a mapping of
+variable names to arrays: 1D arrays use `row`, and 2D arrays use `(row, col)`.
+Plain arrays follow matrix order; DataArray dimensions are renamed by position
+and indexed axes are aligned by label. Unindexed axes follow matrix order.
+Xarray validates compatible sizes and coordinates. Additional arrays retain
+their dtypes, so strings, units, and nonfinite metadata are supported. The helper
+returns independent copies and does not require positive definiteness.
+Variable names `fisher`, `row`, and `col` are reserved.
 
 ```python
 from fisharr import dataset, plot
@@ -132,8 +136,8 @@ from fisharr import dataset, plot
 fiducials = xr.DataArray(
     [1.0, 2.0], dims="row", coords={"row": ["a", "b"]}
 )
-survey_a = dataset(F, fiducials)
-survey_b = dataset(2 * F, fiducials)
+survey_a = dataset(F, {"fiducials": fiducials, "units": ["km", "s"]})
+survey_b = dataset(2 * F, {"fiducials": fiducials})
 
 fig = plot({"Survey A": survey_a, "Survey B": survey_b})
 fig.savefig("constraints.pdf")
@@ -150,8 +154,9 @@ fig = plot(
 
 `plot()` accepts only a nonempty mapping of string labels to Datasets containing
 `fisher` and `fiducials`. Directly constructed Datasets may carry additional
-metadata. Each forecast supplies its own center; mapping order controls overlay
-order and keys become legend labels. Inputs are never mutated.
+metadata. Plotting requires finite, real fiducials on `row`. Each forecast
+supplies its own center; mapping order controls overlay order and keys become
+legend labels. Inputs are never mutated.
 
 By default, plots use the intersection of parameter names in the first
 forecast's order. An explicit `parameters` selection must be nonempty, unique,

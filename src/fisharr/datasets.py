@@ -1,53 +1,72 @@
-"""Construction and validation of Fisher forecast Datasets."""
+"""Construction of labeled Fisher matrix Datasets with parameter metadata."""
 
+from collections.abc import Hashable, Mapping
+
+import numpy as np
 import xarray as xr
+from numpy.typing import ArrayLike
 
-from .construction import _coordinate_labels, _real_values, _validate_matrix
+from .construction import _validate_matrix
 
 
-def dataset(F: xr.DataArray, fiducials: xr.DataArray) -> xr.Dataset:
-    """Combine a Fisher matrix and reference values with shared coordinates.
+def dataset(
+    F: xr.DataArray, arrays: Mapping[Hashable, ArrayLike | xr.DataArray]
+) -> xr.Dataset:
+    """Combine a Fisher matrix and arrays on shared parameter coordinates.
 
     Parameters
     ----------
     F : xarray.DataArray
         Canonical matrix with dimensions ``('row', 'col')``.
-    fiducials : xarray.DataArray
-        Finite real values on dimension ``row`` with the same parameter set
-        as F. Values are reordered to match F before Dataset construction.
+    arrays : mapping of hashable to array_like or xarray.DataArray
+        Additional variables. One-dimensional arrays use ``row``; two-
+        dimensional arrays use ``('row', 'col')``. Plain arrays follow matrix
+        order. DataArray dimensions are renamed by position and indexed axes
+        are aligned by label. Unindexed axes follow matrix order. Names
+        ``fisher``, ``row``, and ``col`` are reserved.
 
     Returns
     -------
     xarray.Dataset
-        Independent float64 variables ``fisher`` and ``fiducials`` with
-        canonical coordinates. Positive definiteness is not required.
+        Independent variables with shared matrix coordinates. Additional
+        arrays retain their dtypes; positive definiteness is not required.
 
     Raises
     ------
     TypeError
-        If either input is not a DataArray.
+        If F is not a DataArray or arrays is not a mapping.
     ValueError
-        If the matrix or fiducials violate their coordinate or value contract.
+        If the matrix is invalid, names are reserved, arrays are not one- or
+        two-dimensional, or xarray rejects incompatible sizes or coordinates.
+
+    Notes
+    -----
+    Shape, coordinate, and merge compatibility are checked by xarray.
+    Metadata need not be numeric or finite. Plotting validates fiducials.
     """
-    fisher, labels = _validate_matrix(F)
-    if not isinstance(fiducials, xr.DataArray):
-        raise TypeError("Fiducials must be an xarray.DataArray.")
-    if fiducials.dims != ("row",):
-        raise ValueError("Fiducial dimensions must be exactly ('row',).")
-    names = _coordinate_labels(fiducials, "row")
-    if set(names) != set(labels):
-        raise ValueError(
-            "Fiducial parameters must match the complete matrix parameters."
+    fisher, _ = _validate_matrix(F)
+    if not isinstance(arrays, Mapping):
+        raise TypeError("Arrays must be a mapping of names to arrays.")
+    variables: dict[Hashable, xr.DataArray] = {"fisher": fisher}
+    dimensions = {1: ("row",), 2: ("row", "col")}
+    ordered = fisher.sortby(["row", "col"])
+    for name, array in arrays.items():
+        if name in {"fisher", "row", "col"}:
+            raise ValueError(f"Variable name {name!r} is reserved.")
+        variable = (
+            array
+            if isinstance(array, xr.DataArray)
+            else xr.DataArray(np.asarray(array))
         )
-    values = _real_values(fiducials.sel(row=labels).values).copy()
-    reference = xr.DataArray(values, dims="row", coords={"row": labels.copy()})
-    return xr.Dataset({"fisher": fisher, "fiducials": reference})
-
-
-def _validate_dataset(forecast: xr.Dataset) -> xr.Dataset:
-    """Validate a forecast and return independent canonical variables."""
-    if not isinstance(forecast, xr.Dataset):
-        raise TypeError("Plot inputs must be xarray.Dataset objects.")
-    if not {"fisher", "fiducials"}.issubset(forecast.data_vars):
-        raise ValueError("Datasets must contain 'fisher' and 'fiducials' variables.")
-    return dataset(forecast["fisher"], forecast["fiducials"])
+        if variable.ndim not in dimensions:
+            raise ValueError("Additional arrays must be one- or two-dimensional.")
+        dims = dimensions[variable.ndim]
+        variable = variable.rename(dict(zip(variable.dims, dims, strict=True)))
+        variable = variable.assign_coords(
+            {dim: fisher.coords[dim] for dim in dims if dim not in variable.indexes}
+        )
+        # Exact alignment on sorted coordinates permits reordered labels while
+        # letting xarray reject missing, extra, or duplicate labels and sizes.
+        xr.align(ordered, variable.sortby(list(dims)), join="exact")
+        variables[name] = variable.sel({dim: fisher.coords[dim] for dim in dims})
+    return xr.Dataset(variables).copy(deep=True)
