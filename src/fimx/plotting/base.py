@@ -29,13 +29,14 @@ class _Gaussian:
 class PlotBackend(Protocol):
     """Callable interface implemented by each plotting backend.
 
-    Backends receive already-inverted marginal covariances and never see
-    Fisher matrices.
+    Backends receive parameter names, display labels, and already-inverted
+    marginal covariances; they never see Fisher matrices.
     """
 
     def __call__(
         self,
         names: Sequence[str],
+        parameter_labels: Sequence[str],
         distributions: Sequence[_Gaussian],
         *,
         filled: bool = True,
@@ -71,7 +72,8 @@ def _prepare(
     datasets: Mapping[str, xr.Dataset],
     parameters: Sequence[str] | None,
     method: InversionMethod = "cholesky",
-) -> tuple[list[str], list[_Gaussian]]:
+    parameter_labels: Mapping[str, str] | None = None,
+) -> tuple[list[str], list[str], list[_Gaussian]]:
     """Validate forecasts and select marginalized Gaussian distributions."""
     if not isinstance(datasets, Mapping):
         raise TypeError("Plot inputs must be a mapping of labels to Datasets.")
@@ -95,10 +97,22 @@ def _prepare(
             for name in names:
                 if name not in ds.row.values:
                     raise KeyError(f"Parameter {name!r} is absent from {label!r}.")
+    if parameter_labels is not None:
+        if not isinstance(parameter_labels, Mapping):
+            raise TypeError("Parameter labels must be a mapping of names to strings.")
+        if any(
+            not isinstance(name, str) or not isinstance(label, str)
+            for name, label in parameter_labels.items()
+        ):
+            raise ValueError("Parameter label keys and values must be strings.")
+    plot_names = [
+        parameter_labels.get(name, name) if parameter_labels is not None else name
+        for name in names
+    ]
     distributions = []
     for label, ds in forecasts.items():
         covariance = inv(ds["fisher"], method=method).sel(row=names, col=names)
         distributions.append(
             _Gaussian(label, ds["fiducials"].sel(row=names).values, covariance.values)
         )
-    return names, distributions
+    return names, plot_names, distributions
