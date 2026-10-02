@@ -3,8 +3,19 @@ name = "fimx"
 version = "0.1.0"
 description = "Dense Fisher matrix functions on labeled xarray arrays"
 readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE*"]
 authors = [
     { name = "binado", email = "bernardopveronese@gmail.com" }
+]
+keywords = ["fisher-matrix", "forecasting", "cosmology", "xarray"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Topic :: Scientific/Engineering",
+    "Typing :: Typed",
 ]
 requires-python = ">=3.12"
 dependencies = [
@@ -16,6 +27,11 @@ dependencies = [
 [project.optional-dependencies]
 io = ["h5netcdf[h5py]"]
 plotting = ["getdist", "matplotlib"]
+
+[project.urls]
+Homepage = "https://github.com/binado/fimx"
+Repository = "https://github.com/binado/fimx"
+Issues = "https://github.com/binado/fimx/issues"
 
 [project.scripts]
 fimx-plot = "fimx.cli:main"
