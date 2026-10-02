@@ -1,3 +1,7 @@
 .plans
 TODOS.md
 __pycache__
+/dist/
+.venv/
+.DS_Store
+*.egg-info
