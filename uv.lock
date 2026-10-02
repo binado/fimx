@@ -230,6 +230,7 @@ plotting = [
 
 [package.dev-dependencies]
 dev = [
+    { name = "getdist" },
     { name = "h5netcdf", extra = ["h5py"] },
     { name = "ipykernel" },
     { name = "matplotlib" },
@@ -252,6 +253,7 @@ provides-extras = ["io", "plotting"]
 
 [package.metadata.requires-dev]
 dev = [
+    { name = "getdist", specifier = ">=1.7.7" },
     { name = "h5netcdf", extras = ["h5py"] },
     { name = "ipykernel", specifier = ">=7.1.0" },
     { name = "matplotlib", specifier = ">=3.10.8" },

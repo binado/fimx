@@ -23,6 +23,7 @@ build-backend = "uv_build"
 
 [dependency-groups]
 dev = [
+    "getdist>=1.7.7",
     "h5netcdf[h5py]",
     "ipykernel>=7.1.0",
     "matplotlib>=3.10.8",
