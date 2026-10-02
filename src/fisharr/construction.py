@@ -39,7 +39,7 @@ def _coordinate_labels(array: xr.DataArray, dimension: str) -> list[str]:
     return _labels(array.coords[dimension].values.tolist(), name=dimension)
 
 
-def _validate_matrix(F: xr.DataArray) -> tuple[NDArray[np.float64], list[str]]:
+def _validate_matrix(F: xr.DataArray) -> tuple[xr.DataArray, list[str]]:
     """Validate a canonical matrix without checking positive definiteness."""
     if not isinstance(F, xr.DataArray):
         raise TypeError("Matrix inputs must be xarray.DataArray objects.")
@@ -53,7 +53,7 @@ def _validate_matrix(F: xr.DataArray) -> tuple[NDArray[np.float64], list[str]]:
     values = _real_values(F.values)
     if not np.allclose(values, values.T, rtol=1e-10, atol=1e-12):
         raise ValueError("Matrices must be symmetric.")
-    return values, parameters
+    return _new_matrix(values, parameters), parameters
 
 
 def _new_matrix(values: ArrayLike, parameters: Sequence[str]) -> xr.DataArray:

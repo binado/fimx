@@ -31,13 +31,11 @@ def combine(*matrices: xr.DataArray) -> xr.DataArray:
         raise ValueError("At least one matrix is required.")
     validated = [_validate_matrix(F) for F in matrices]
     union = list(dict.fromkeys(label for _, labels in validated for label in labels))
-    result = np.zeros((len(union), len(union)), dtype=np.float64)
+    result = _new_matrix(np.zeros((len(union), len(union)), dtype=np.float64), union)
     for values, labels in validated:
-        aligned = _new_matrix(values, labels).reindex(
-            row=union, col=union, fill_value=0
-        )
-        result += aligned.values
-    return _new_matrix(result, union)
+        aligned = values.reindex(row=union, col=union, fill_value=0)
+        result = result + aligned
+    return _new_matrix(result.values, union)
 
 
 def gaussian_prior(sigmas: Mapping[str, float]) -> xr.DataArray:

@@ -2,8 +2,8 @@
 
 from collections.abc import Sequence
 
-import numpy as np
 import xarray as xr
+from xarray_einstats import linalg
 
 from .construction import (
     _coordinate_labels,
@@ -59,7 +59,9 @@ def fix(F: xr.DataArray, parameters: str | Sequence[str]) -> xr.DataArray:
     """
     values, labels = _validate_matrix(F)
     keep, _ = _selection(labels, parameters)
-    return _new_matrix(values[np.ix_(keep, keep)], [labels[i] for i in keep])
+    retained = [labels[i] for i in keep]
+    selected = values.sel(row=retained, col=retained)
+    return _new_matrix(selected.values, retained)
 
 
 def marginalize(F: xr.DataArray, parameters: str | Sequence[str]) -> xr.DataArray:
@@ -93,12 +95,23 @@ def marginalize(F: xr.DataArray, parameters: str | Sequence[str]) -> xr.DataArra
     """
     values, labels = _validate_matrix(F)
     keep, drop = _selection(labels, parameters)
-    result = values[np.ix_(keep, keep)]
+    retained = [labels[i] for i in keep]
+    removed = [labels[i] for i in drop]
+    result = values.sel(row=retained, col=retained)
     if drop:
-        cross = values[np.ix_(keep, drop)]
-        result = result - cross @ _solve(values[np.ix_(drop, drop)], cross.T)
-        result = result / 2 + result.T / 2
-    return _new_matrix(result, [labels[i] for i in keep])
+        cross = values.sel(row=retained, col=removed)
+        rhs = cross.transpose("col", "row").rename(row="rhs_col").rename(col="row")
+        solved = _solve(values.sel(row=removed, col=removed), rhs).rename(
+            row="drop_parameter", col="rhs_col"
+        )
+        product = linalg.matmul(
+            cross,
+            solved,
+            dims=(("row", "col"), ("drop_parameter", "rhs_col")),
+        ).rename(rhs_col="col")
+        result = result - product
+    raw = result.values
+    return _new_matrix(raw / 2 + raw.T / 2, retained)
 
 
 def transform(F: xr.DataArray, jacobian: xr.DataArray) -> xr.DataArray:
@@ -139,6 +152,21 @@ def transform(F: xr.DataArray, jacobian: xr.DataArray) -> xr.DataArray:
         raise ValueError(
             "Jacobian old labels must match the complete matrix parameters."
         )
-    J = _real_values(jacobian.values)[[old.index(label) for label in labels], :]
-    result = J.T @ values @ J
-    return _new_matrix(result / 2 + result.T / 2, new)
+    J = xr.DataArray(
+        _real_values(jacobian.sel(old_parameter=labels).values),
+        dims=("old_parameter", "new_parameter"),
+        coords={"old_parameter": labels, "new_parameter": new},
+    ).rename(old_parameter="col")
+    right = linalg.matmul(values, J, dims=("row", "col", "new_parameter"))
+    left = J.transpose("new_parameter", "col")
+    right = right.rename(row="old_parameter", new_parameter="new_parameter_right")
+    result = linalg.matmul(
+        left,
+        right,
+        dims=(
+            ("new_parameter", "col"),
+            ("old_parameter", "new_parameter_right"),
+        ),
+    ).rename(new_parameter="row", new_parameter_right="col")
+    raw = result.values
+    return _new_matrix(raw / 2 + raw.T / 2, new)
