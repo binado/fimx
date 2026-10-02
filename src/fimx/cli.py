@@ -46,11 +46,6 @@ def _parser() -> ArgumentParser:
         help="Parameters to include in the plot, in the requested order.",
     )
     parser.add_argument(
-        "--plot-label-var",
-        metavar="NAME",
-        help="Dataset variable containing string plot labels on the row dimension.",
-    )
-    parser.add_argument(
         "--filled",
         action=BooleanOptionalAction,
         default=True,
@@ -97,61 +92,9 @@ def main(argv: Sequence[str] | None = None) -> None:
             )
         datasets[label] = load_dataset(path)
 
-    parameter_labels = None
-    if args.plot_label_var is not None:
-        labels_by_file = {}
-        for file_label, forecast in datasets.items():
-            if args.plot_label_var not in forecast.data_vars:
-                parser.error(
-                    f"Dataset {file_label!r} has no variable {args.plot_label_var!r}."
-                )
-            variable = forecast[args.plot_label_var]
-            if variable.dims != ("row",):
-                parser.error(
-                    f"Plot label variable {args.plot_label_var!r} in "
-                    f"{file_label!r} must have dimensions ('row',)."
-                )
-            values = variable.values.tolist()
-            if any(not isinstance(value, str) for value in values):
-                parser.error(
-                    f"Plot label variable {args.plot_label_var!r} in "
-                    f"{file_label!r} must contain only strings."
-                )
-            labels_by_file[file_label] = dict(
-                zip(forecast.row.values.tolist(), values, strict=True)
-            )
-
-        if args.parameters is None:
-            first = next(iter(datasets.values()))
-            selected_parameters = [
-                name
-                for name in first.row.values.tolist()
-                if all(name in forecast.row.values for forecast in datasets.values())
-            ]
-        else:
-            selected_parameters = args.parameters
-
-        parameter_labels = {}
-        label_sources = {}
-        for file_label, file_labels in labels_by_file.items():
-            for name in selected_parameters:
-                if name not in file_labels:
-                    continue
-                display_label = file_labels[name]
-                if name in parameter_labels and parameter_labels[name] != display_label:
-                    parser.error(
-                        f"Conflicting plot labels for parameter {name!r}: "
-                        f"{label_sources[name]!r} uses "
-                        f"{parameter_labels[name]!r}, but {file_label!r} uses "
-                        f"{display_label!r}."
-                    )
-                parameter_labels[name] = display_label
-                label_sources[name] = file_label
-
     figure = plot(
         datasets,
         parameters=args.parameters,
-        parameter_labels=parameter_labels,
         filled=args.filled,
         method=args.method,
         backend=args.backend,

@@ -34,7 +34,7 @@ posterior = combine(F, prior)
 | `expand(F, parameters)` | Embed in a larger or reordered parameter set, filling with zeros. |
 | `fix(F, parameters)` | Remove names through a principal submatrix. |
 | `marginalize(F, parameters)` | Remove names through the Schur complement. |
-| `inv(F, method="cholesky")` | Return the inverse; `method` is `cholesky`, `inv`, or `pinv`. |
+| `inv(F, method="cholesky", metadata=False)` | Return the inverse; `method` is `cholesky`, `inv`, or `pinv`. With `metadata=True`, `attrs` hold `method`, `condition_number` and `residual`. |
 | `errors(F, method="cholesky")` | Return marginalized standard deviations. |
 | `transform(F, jacobian)` | Change variables using `J.T @ F @ J`. |
 | `combine(*matrices)` | Sum independent information over the parameter union. |
@@ -154,43 +154,76 @@ Datasets that contain `fisher` and `fiducials`:
 uv add 'fimx[io,plotting]'
 fimx-plot --file survey-a.nc --file survey-b.nc \
     --figure-file constraints.png --figure-dpi 200 \
-    --parameters a b --plot-label-var latex_label --no-filled --backend getdist \
+    --parameters a b --no-filled --backend getdist \
     --backend-kwargs '{"contour_colors": ["C0", "C1"]}'
 ```
 
 Each file stem becomes a legend label, so stems must be unique. The output
 defaults to `plot.png` at 150 dpi. `--parameters` selects and orders
-parameters. `--plot-label-var` optionally names a string variable on the
-`row` dimension that supplies axis labels; it must exist in every file, and
-labels for shared plotted parameters must agree across files. Without this
-option, parameter names are used. `--no-filled` draws line contours,
-`--inversion-method` picks `cholesky`, `inv`, or `pinv`, `--backend` picks a
-backend, and `--backend-kwargs` takes a JSON object.
+parameters. Axis labels come from an optional `labels` variable (see
+[Storage](#storage)); labels for shared plotted parameters must agree across
+files, and parameter names are used where there are none. `--no-filled` draws
+line contours, `--inversion-method` picks `cholesky`, `inv`, or `pinv`,
+`--backend` picks a backend, and `--backend-kwargs` takes a JSON object.
 `fimx.io.load_dataset(path)` loads the same files from Python.
 
 `fimx-invert` reports matrix conditioning and inversion residuals from either
-a standalone matrix DataArray or a Dataset containing `fisher`:
+a standalone matrix DataArray or a Dataset containing `fisher`; an existing
+`covariance` is ignored:
 
 ```sh
 fimx-invert --file fisher.nc
 fimx-invert --file forecast.nc --inversion-method inv pinv --json
+fimx-invert --file forecast.nc --save forecast-with-covariance.nc
 ```
 
 All three inversion methods (`cholesky`, `inv`, and `pinv`) are evaluated by
 default. Each method reports the maximum absolute element of `F @ F_inv - I`;
 methods that cannot invert the matrix report their error while the remaining
 methods continue. The report also includes the condition number, numerical
-rank, eigenvalue range, and positive-definite status.
+rank, eigenvalue range, and positive-definite status. `--save PATH` writes the
+Dataset, with its `fiducials` and `labels`, plus a new `covariance` from the
+first successful selected method in the order `cholesky`, `inv`, `pinv`; the
+method is reported on stderr and recorded in the covariance's `attrs` together
+with its condition number and residual. Nothing is written if every selected
+method fails.
 
 ## Storage
 
-There is no `fimx` file format; use xarray. The `io` extra supplies `h5netcdf`.
+Matrices are plain xarray objects, so any xarray writer works. The `io` extra
+supplies `h5netcdf`.
 
 ```python
 F.to_netcdf("fisher.nc", engine="h5netcdf")
 restored = xr.load_dataarray("fisher.nc", engine="h5netcdf")
 C_restored = inv(restored)
 ```
+
+For forecasts, `fimx.io.save_dataset` writes the Dataset convention read by
+`plot`, `fimx-plot` and `fimx-invert`; `fimx.io.load_dataset` reads it back.
+
+```python
+from fimx.io import load_dataset, save_dataset
+
+save_dataset(
+    "forecast.nc",
+    F,
+    covariance=inv(F, metadata=True),  # optional, never computed for you
+    fiducials=[0.3, 0.7, 1.0],
+    labels=[r"\Omega_m", "h", r"\sigma_8"],
+)
+forecast = load_dataset("forecast.nc")
+```
+
+| Variable | Dimensions | Required | Meaning |
+| --- | --- | --- | --- |
+| `fisher` | `row`, `col` | yes | Fisher matrix. |
+| `covariance` | `row`, `col` | no | Inverse or pseudoinverse of `fisher`; keeps the `attrs` of `inv(..., metadata=True)`. |
+| `fiducials` | `row` | no (needed to plot) | Reference parameter values. |
+| `labels` | `row` | no | Unique axis labels for plotting, as LaTeX math without the enclosing `$`. |
+
+`covariance` is checked loosely against `fisher` so that a matrix from another
+forecast is rejected; it is not recomputed.
 
 ## More
 

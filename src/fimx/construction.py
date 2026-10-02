@@ -20,6 +20,14 @@ def _labels(parameters: Sequence[str], *, name: str) -> list[str]:
     return labels
 
 
+def _plot_labels(labels: Sequence[str]) -> list[str]:
+    """Validate unique plot labels given as LaTeX math without enclosing ``$``."""
+    validated = _labels(labels, name="labels")
+    if any("$" in label for label in validated):
+        raise ValueError("labels must not include '$'; they are rendered as math.")
+    return validated
+
+
 def _real_values(values: ArrayLike) -> NDArray[np.float64]:
     """Convert finite, real numeric data to float64."""
     array = np.asarray(values)
