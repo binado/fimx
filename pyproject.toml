@@ -16,15 +16,18 @@ dependencies = [
 io = ["h5netcdf[h5py]"]
 
 [build-system]
-requires = ["uv_build>=0.9.18,<0.10.0"]
+requires = ["uv_build>=0.12.7,<0.13.0"]
 build-backend = "uv_build"
 
 [dependency-groups]
 dev = [
+    "h5netcdf[h5py]",
     "ipykernel>=7.1.0",
     "matplotlib>=3.10.8",
+    "prek>=0.5.3",
     "pytest>=9.0.2",
-    "h5netcdf[h5py]",
+    "ruff>=0.16.0",
+    "ty>=0.0.83",
 ]
 
 [tool.ruff]
