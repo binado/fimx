@@ -10,6 +10,7 @@ from .construction import (
     _labels,
     _new_matrix,
     _real_values,
+    _symmetrize,
     _validate_matrix,
 )
 from .inversion import _solve
@@ -144,8 +145,7 @@ def marginalize(F: xr.DataArray, parameters: str | Sequence[str]) -> xr.DataArra
             dims=(("row", "col"), ("drop_parameter", "rhs_col")),
         ).rename(rhs_col="col")
         result = result - product
-    raw = result.values
-    return _new_matrix(raw / 2 + raw.T / 2, retained)
+    return _symmetrize(result)
 
 
 def transform(F: xr.DataArray, jacobian: xr.DataArray) -> xr.DataArray:
@@ -200,5 +200,4 @@ def transform(F: xr.DataArray, jacobian: xr.DataArray) -> xr.DataArray:
             ("old", "new_right"),
         ),
     ).rename(new="row", new_right="col")
-    raw = result.values
-    return _new_matrix(raw / 2 + raw.T / 2, new)
+    return _symmetrize(result)

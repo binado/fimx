@@ -6,7 +6,7 @@ import numpy as np
 import xarray as xr
 from xarray_einstats import linalg
 
-from .construction import _new_matrix, _validate_matrix
+from .construction import _symmetrize, _validate_matrix
 
 InversionMethod = Literal["cholesky", "inv", "pinv"]
 
@@ -62,12 +62,12 @@ def inv(F: xr.DataArray, *, method: InversionMethod = "cholesky") -> xr.DataArra
             dims=("row", "rhs_col"),
             coords={"row": parameters, "rhs_col": parameters},
         )
-        raw = _solve(values, rhs).values
+        result = _solve(values, rhs)
     elif method == "inv":
-        raw = linalg.inv(values, dims=("row", "col")).values
+        result = linalg.inv(values, dims=("row", "col"))
     else:
-        raw = linalg.pinv(values, dims=("row", "col"), hermitian=True).values
-    return _new_matrix(raw / 2 + raw.T / 2, parameters)
+        result = linalg.pinv(values, dims=("row", "col"), hermitian=True)
+    return _symmetrize(result)
 
 
 def errors(F: xr.DataArray, *, method: InversionMethod = "cholesky") -> xr.DataArray:

@@ -66,6 +66,13 @@ def _new_matrix(values: ArrayLike, parameters: Sequence[str]) -> xr.DataArray:
     )
 
 
+def _symmetrize(A: xr.DataArray) -> xr.DataArray:
+    """Return the fresh canonical matrix ``(A + A.T) / 2`` with swapped labels."""
+    swapped = A.rename({"row": "col", "col": "row"})
+    symmetric = ((A + swapped) / 2).transpose("row", "col")
+    return _new_matrix(symmetric.values, symmetric.row.values.tolist())
+
+
 def matrix(values: ArrayLike, parameters: Sequence[str]) -> xr.DataArray:
     """Construct a labeled, symmetric dense matrix.
 
