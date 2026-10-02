@@ -5,9 +5,7 @@ All notable changes to this project are documented here. The format follows
 adheres to [Semantic Versioning](https://semver.org/). The API is alpha and may
 change before 1.0.
 
-## [Unreleased]
-
-## [0.1.0] - Unreleased
+## [0.1.0]
 
 ### Added
 
