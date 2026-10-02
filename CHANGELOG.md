@@ -7,6 +7,8 @@ change before 1.0.
 
 ## [Unreleased]
 
+## [0.2.0]
+
 ### Added
 
 - `method` argument (`"cholesky"`, `"inv"`, or `"pinv"`) for `inv`, `errors`, and
@@ -30,5 +32,6 @@ change before 1.0.
 - `fimx-plot` command-line tool and `fimx.io.load_dataset` for NetCDF files.
 - Optional `io` and `plotting` extras, and a `py.typed` marker.
 
-[Unreleased]: https://github.com/binado/fimx/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/binado/fimx/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/binado/fimx/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/binado/fimx/commits/main
