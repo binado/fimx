@@ -30,6 +30,7 @@ posterior = combine(F, prior)
 | Function | Behavior |
 | --- | --- |
 | `matrix(values, parameters)` | Construct and validate a canonical matrix. |
+| `vector(values, parameters)` | Construct a canonical one-dimensional parameter array. |
 | `expand(F, parameters)` | Embed in a larger or reordered parameter set, filling with zeros. |
 | `fix(F, parameters)` | Remove names through a principal submatrix. |
 | `marginalize(F, parameters)` | Remove names through the Schur complement. |
@@ -45,6 +46,8 @@ posterior = combine(F, prior)
   and explicit, identical, ordered coordinates of unique string names.
   Batches, inferred dimensions, and coordinate repair are unsupported.
 - Values must be real, finite, and symmetric. They are converted to float64.
+- Vectors have dimension exactly `("row",)`, a nonempty shape, and explicit
+  coordinates of unique string names. Values retain their input dtype.
 - Positive semidefiniteness is not checked, so singular matrices can be built,
   fixed, transformed, or combined. `inv` and `errors` require positive
   definite input; `marginalize` only requires the removed block to be.

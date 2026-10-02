@@ -1,4 +1,4 @@
-"""Construction and shared validation of labeled dense matrices."""
+"""Construction and shared validation of labeled dense arrays."""
 
 from collections.abc import Sequence
 
@@ -66,6 +66,16 @@ def _new_matrix(values: ArrayLike, parameters: Sequence[str]) -> xr.DataArray:
     )
 
 
+def _new_vector(values: ArrayLike, parameters: Sequence[str]) -> xr.DataArray:
+    """Create a fresh vector with only canonical coordinates."""
+    labels = list(parameters)
+    return xr.DataArray(
+        np.asarray(values).copy(),
+        dims=("row",),
+        coords={"row": labels},
+    )
+
+
 def _symmetrize(A: xr.DataArray) -> xr.DataArray:
     """Return the fresh canonical matrix ``(A + A.T) / 2`` with swapped labels."""
     swapped = A.rename({"row": "col", "col": "row"})
@@ -105,3 +115,35 @@ def matrix(values: ArrayLike, parameters: Sequence[str]) -> xr.DataArray:
     result = _new_matrix(array, labels)
     _validate_matrix(result)
     return result
+
+
+def vector(values: ArrayLike, parameters: Sequence[str]) -> xr.DataArray:
+    """Construct a labeled, dense one-dimensional array.
+
+    Parameters
+    ----------
+    values : array_like
+        Nonempty one-dimensional array with one value per parameter.
+        Values retain their input dtype.
+    parameters : sequence of str
+        Unique parameter names, in vector order.
+
+    Returns
+    -------
+    xarray.DataArray
+        Fresh array with dimension ``('row',)`` and an explicit ``row``
+        coordinate.
+
+    Raises
+    ------
+    ValueError
+        If the values are not one-dimensional and nonempty, or if the
+        parameter names are invalid or do not match the value count.
+    """
+    labels = _labels(parameters, name="parameters")
+    array = np.asarray(values)
+    if array.ndim != 1 or array.shape[0] != len(labels):
+        raise ValueError(
+            "Values must be one-dimensional and match the parameter count."
+        )
+    return _new_vector(array, labels)

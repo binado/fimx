@@ -6,7 +6,7 @@ import numpy as np
 import xarray as xr
 from numpy.typing import ArrayLike
 
-from .construction import _validate_matrix
+from .construction import _validate_matrix, matrix, vector
 
 
 def dataset(
@@ -44,7 +44,8 @@ def dataset(
     Shape, coordinate, and merge compatibility are checked by xarray.
     Metadata need not be numeric or finite. Plotting validates fiducials.
     """
-    fisher, _ = _validate_matrix(F)
+    validated_fisher, labels = _validate_matrix(F)
+    fisher = matrix(validated_fisher.values, labels)
     if not isinstance(arrays, Mapping):
         raise TypeError("Arrays must be a mapping of names to arrays.")
     variables: dict[Hashable, xr.DataArray] = {"fisher": fisher}
@@ -68,5 +69,10 @@ def dataset(
         # Exact alignment on sorted coordinates permits reordered labels while
         # letting xarray reject missing, extra, or duplicate labels and sizes.
         xr.align(ordered, variable.sortby(list(dims)), join="exact")
-        variables[name] = variable.sel({dim: fisher.coords[dim] for dim in dims})
+        variable = variable.sel({dim: fisher.coords[dim] for dim in dims})
+        if variable.ndim == 1:
+            canonical = vector(variable.values, labels)
+            canonical.attrs = variable.attrs.copy()
+            variable = canonical
+        variables[name] = variable
     return xr.Dataset(variables).copy(deep=True)
