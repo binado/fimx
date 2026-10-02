@@ -1,6 +1,6 @@
 # fisharr
 
-`fisharr` provides eight functions for dense Fisher information matrices stored
+`fisharr` provides functions for dense Fisher information matrices stored
 as ordinary `xarray.DataArray` objects. NumPy handles the computation; xarray
 handles labels, metadata containers, and persistence.
 
@@ -8,6 +8,8 @@ handles labels, metadata containers, and persistence.
 uv add fisharr
 # Optional NetCDF backend:
 uv add 'fisharr[io]'
+# Optional Gaussian plotting backend:
+uv add 'fisharr[plotting]'
 ```
 
 ## Array contract
@@ -115,6 +117,66 @@ blocks). There is no fallback, pseudoinverse, or regularization. Computed matrix
 outputs that cannot be represented as finite float64 values raise `ValueError`.
 
 ## Metadata and storage
+
+### Forecast Datasets and plotting
+
+Keep fiducials separate from the Fisher matrix, then use `dataset()` to combine
+them and other metadata with shared parameter coordinates. Pass a mapping of
+variable names to arrays: 1D arrays use `row`, and 2D arrays use `(row, col)`.
+Plain arrays follow matrix order; DataArray dimensions are renamed by position
+and indexed axes are aligned by label. Unindexed axes follow matrix order.
+Xarray validates compatible sizes and coordinates. Additional arrays retain
+their dtypes, so strings, units, and nonfinite metadata are supported. The helper
+returns independent copies and does not require positive definiteness.
+Variable names `fisher`, `row`, and `col` are reserved.
+
+```python
+from fisharr import dataset, plot
+
+fiducials = xr.DataArray([1.0, 2.0], dims="row", coords={"row": ["a", "b"]})
+survey_a = dataset(F, {"fiducials": fiducials, "units": ["km", "s"]})
+survey_b = dataset(2 * F, {"fiducials": fiducials})
+
+fig = plot({"Survey A": survey_a, "Survey B": survey_b})
+fig.savefig("constraints.pdf")
+
+# Explicit order and GetDist customization:
+fig = plot(
+    {"Survey A": survey_a, "Survey B": survey_b},
+    parameters=["b", "a"],
+    backend="getdist",
+    filled=False,
+    backend_kwargs={"contour_colors": ["C0", "C1"]},
+)
+```
+
+`plot()` accepts only a nonempty mapping of string labels to Datasets containing
+`fisher` and `fiducials`. Directly constructed Datasets may carry additional
+metadata. Plotting requires finite, real fiducials on `row`. Each forecast
+supplies its own center; mapping order controls overlay order and keys become
+legend labels. Inputs are never mutated.
+
+By default, plots use the intersection of parameter names in the first
+forecast's order. An explicit `parameters` selection must be nonempty, unique,
+and present in every forecast. Each complete Fisher matrix is inverted before
+selecting parameters, so omitted parameters are marginalized over. Consequently,
+all complete matrices must be positive definite, including nuisance blocks.
+Disjoint parameter sets raise `ValueError`; unavailable requested names raise
+`KeyError`.
+
+The GetDist backend plots analytic Gaussians without generating random samples.
+It returns a Matplotlib `Figure` without showing or saving it. Filled contours
+are enabled by default; styles and confidence levels otherwise follow GetDist's
+defaults. `backend_kwargs` forwards options to `triangle_plot`, excluding
+`roots`, `params`, `legend_labels`, and `filled`, which the wrapper controls.
+Unknown backend names raise `ValueError`.
+
+GetDist and Matplotlib are optional and loaded only when plotting is requested.
+`fisharr.plotting.base.PlotBackend` defines the callable interface for additional
+backends. Shared preparation lives in `base`, backend-specific rendering in
+`getdist`, and `fisharr.plotting.plot` selects the registered implementation.
+
+### Other metadata
 
 Keep parameter metadata in your own Dataset, separately from computation:
 

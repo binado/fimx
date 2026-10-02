@@ -19,6 +19,8 @@ def test_public_api() -> None:
         "transform",
         "combine",
         "gaussian_prior",
+        "dataset",
+        "plot",
     }
     assert not hasattr(fisharr, "FisherMatrix")
 
