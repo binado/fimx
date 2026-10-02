@@ -30,6 +30,7 @@ posterior = combine(F, prior)
 | Function | Behavior |
 | --- | --- |
 | `matrix(values, parameters)` | Construct and validate a canonical matrix. |
+| `expand(F, parameters)` | Embed in a larger or reordered parameter set, filling with zeros. |
 | `fix(F, parameters)` | Remove names through a principal submatrix. |
 | `marginalize(F, parameters)` | Remove names through the Schur complement. |
 | `inv(F)` | Return the inverse using Cholesky. |
@@ -56,6 +57,10 @@ Behavior worth knowing:
 - `fix` and `marginalize` accept one name or a sequence and keep the remaining
   order. Unknown names raise `KeyError`; duplicates or removing every
   parameter raise `ValueError`.
+- `expand` embeds a matrix in a larger or reordered set of names, filling new
+  entries with zeros. The target must contain every existing name. Matrices
+  expanded to the same names add with plain `+`, whereas `+` on mismatched
+  names silently keeps only the overlap.
 - `combine` keeps the first matrix's order and appends new parameters as they
   appear. Missing entries contribute zero.
 - `gaussian_prior` takes **standard deviations**, not information values.

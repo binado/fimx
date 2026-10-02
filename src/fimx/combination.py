@@ -1,11 +1,14 @@
 """Combination of independent information and Gaussian priors."""
 
+import operator
 from collections.abc import Mapping
+from functools import reduce
 
 import numpy as np
 import xarray as xr
 
 from .construction import _labels, _new_matrix, _real_values, _validate_matrix
+from .parameters import expand
 
 
 def combine(*matrices: xr.DataArray) -> xr.DataArray:
@@ -29,13 +32,10 @@ def combine(*matrices: xr.DataArray) -> xr.DataArray:
     """
     if not matrices:
         raise ValueError("At least one matrix is required.")
-    validated = [_validate_matrix(F) for F in matrices]
-    union = list(dict.fromkeys(label for _, labels in validated for label in labels))
-    result = _new_matrix(np.zeros((len(union), len(union)), dtype=np.float64), union)
-    for values, labels in validated:
-        aligned = values.reindex(row=union, col=union, fill_value=0)
-        result = result + aligned
-    return _new_matrix(result.values, union)
+    labels = [list(_validate_matrix(F)[1]) for F in matrices]
+    union = list(dict.fromkeys(label for group in labels for label in group))
+    total = reduce(operator.add, (expand(F, union) for F in matrices))
+    return _new_matrix(total.values, union)
 
 
 def gaussian_prior(sigmas: Mapping[str, float]) -> xr.DataArray:

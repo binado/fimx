@@ -4,13 +4,14 @@ from .combination import combine, gaussian_prior
 from .construction import matrix
 from .datasets import dataset
 from .inversion import errors, inv
-from .parameters import fix, marginalize, transform
+from .parameters import expand, fix, marginalize, transform
 from .plotting import plot
 
 __all__ = [
     "combine",
     "dataset",
     "errors",
+    "expand",
     "fix",
     "gaussian_prior",
     "inv",

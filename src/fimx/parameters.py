@@ -1,4 +1,4 @@
-"""Parameter removal and changes of variables."""
+"""Parameter addition, removal and changes of variables."""
 
 from collections.abc import Sequence
 
@@ -7,6 +7,7 @@ from xarray_einstats import linalg
 
 from .construction import (
     _coordinate_labels,
+    _labels,
     _new_matrix,
     _real_values,
     _validate_matrix,
@@ -33,6 +34,39 @@ def _selection(
         [i for i, name in enumerate(labels) if name not in removed],
         [i for i, name in enumerate(labels) if name in removed],
     )
+
+
+def expand(F: xr.DataArray, parameters: Sequence[str]) -> xr.DataArray:
+    """Embed a matrix in a larger parameter set, filling new entries with zeros.
+
+    Parameters
+    ----------
+    F : xarray.DataArray
+        Matrix satisfying the canonical matrix contract.
+    parameters : sequence of str
+        Unique target names, in the desired output order. Must contain every
+        name in ``F``; the order may differ from that of ``F``.
+
+    Returns
+    -------
+    xarray.DataArray
+        Fresh matrix over ``parameters``. Entries involving names absent from
+        ``F`` are zero, so matrices expanded to the same ``parameters`` can be
+        added directly with ``+``.
+
+    Raises
+    ------
+    ValueError
+        If input is malformed, ``parameters`` is invalid, or a name in ``F``
+        is missing from ``parameters``.
+    """
+    values, labels = _validate_matrix(F)
+    target = _labels(parameters, name="parameters")
+    missing = [name for name in labels if name not in target]
+    if missing:
+        raise ValueError(f"parameters is missing names present in F: {missing}.")
+    filled = values.reindex(row=target, col=target, fill_value=0)
+    return _new_matrix(filled.values, target)
 
 
 def fix(F: xr.DataArray, parameters: str | Sequence[str]) -> xr.DataArray:
