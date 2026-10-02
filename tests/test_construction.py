@@ -6,7 +6,7 @@ import xarray as xr
 from numpy.typing import ArrayLike
 
 import fimx
-from fimx import combine, errors, fix, inv, marginalize, matrix, transform
+from fimx import combine, errors, expand, fix, inv, marginalize, matrix, transform
 
 
 def test_public_api() -> None:
@@ -16,6 +16,7 @@ def test_public_api() -> None:
         "marginalize",
         "inv",
         "errors",
+        "expand",
         "transform",
         "combine",
         "gaussian_prior",
@@ -111,14 +112,16 @@ def _invalid_matrices() -> list[xr.DataArray]:
 
 @pytest.mark.parametrize("bad", _invalid_matrices())
 @pytest.mark.parametrize(
-    "operation", [inv, errors, combine, fix, marginalize, transform]
+    "operation", [inv, errors, combine, expand, fix, marginalize, transform]
 )
 def test_all_matrix_entry_points_validate(
     bad: xr.DataArray, operation: Callable[..., xr.DataArray], J: xr.DataArray
 ) -> None:
     with pytest.raises(ValueError):
-        if operation is fix or operation is marginalize:
+        if operation in (fix, marginalize):
             operation(bad, [])
+        elif operation is expand:
+            operation(bad, ["a", "b"])
         elif operation is transform:
             operation(bad, J)
         else:
@@ -126,14 +129,16 @@ def test_all_matrix_entry_points_validate(
 
 
 @pytest.mark.parametrize(
-    "operation", [inv, errors, combine, fix, marginalize, transform]
+    "operation", [inv, errors, combine, expand, fix, marginalize, transform]
 )
 def test_matrix_inputs_must_be_dataarrays(
     operation: Callable[..., xr.DataArray], J: xr.DataArray
 ) -> None:
     with pytest.raises(TypeError):
-        if operation is fix or operation is marginalize:
+        if operation in (fix, marginalize):
             operation(np.eye(2), [])
+        elif operation is expand:
+            operation(np.eye(2), ["a", "b"])
         elif operation is transform:
             operation(np.eye(2), J)
         else:

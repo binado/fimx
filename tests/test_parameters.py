@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 import xarray as xr
 
-from fimx import fix, inv, marginalize, matrix, transform
+from fimx import combine, expand, fix, inv, marginalize, matrix, transform
 
 
 def test_fix_vs_marginalization() -> None:
@@ -149,3 +149,46 @@ def test_invalid_jacobians(F: xr.DataArray, J: xr.DataArray, kind: str) -> None:
 def test_jacobian_must_be_dataarray(F: xr.DataArray) -> None:
     with pytest.raises(TypeError):
         transform(F, np.eye(3))  # ty: ignore[invalid-argument-type]
+
+
+def test_expand_fills_new_entries_with_zeros() -> None:
+    F = matrix([[4, 1], [1, 2]], ["b", "a"])
+    result = expand(F, ["a", "c", "b"])
+    expected = matrix([[2, 0, 1], [0, 0, 0], [1, 0, 4]], ["a", "c", "b"])
+    xr.testing.assert_equal(result, expected)
+
+
+def test_expand_to_same_parameters_is_a_reorder(F: xr.DataArray) -> None:
+    result = expand(F, ["c", "a", "b"])
+    xr.testing.assert_equal(result, F.sel(row=["c", "a", "b"], col=["c", "a", "b"]))
+
+
+def test_expanded_matrices_add_natively() -> None:
+    first = matrix([[4, 1], [1, 2]], ["a", "b"])
+    second = matrix([[3, 0.5], [0.5, 6]], ["b", "c"])
+    union = ["a", "b", "c"]
+    summed = expand(first, union) + expand(second, union)
+    xr.testing.assert_allclose(summed, combine(first, second))
+
+
+@pytest.mark.parametrize(
+    ("parameters", "error"),
+    [
+        (["a", "b"], ValueError),  # drops "c"
+        (["a", "a", "b", "c"], ValueError),
+        ("abc", ValueError),
+        ([], ValueError),
+    ],
+)
+def test_expand_invalid_parameters(
+    F: xr.DataArray, parameters: Sequence[str], error: type[Exception]
+) -> None:
+    with pytest.raises(error):
+        expand(F, parameters)
+
+
+def test_expand_does_not_mutate_input(F: xr.DataArray) -> None:
+    original = F.copy(deep=True)
+    result = expand(F, ["a", "b", "c"])
+    result.values[0, 0] = -1
+    xr.testing.assert_identical(F, original)

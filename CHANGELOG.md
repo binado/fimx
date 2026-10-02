@@ -11,8 +11,9 @@ change before 1.0.
 
 ### Added
 
-- Functions on labeled `xarray.DataArray` Fisher matrices: `matrix`, `fix`,
-  `marginalize`, `inv`, `errors`, `transform`, `combine`, and `gaussian_prior`.
+- Functions on labeled `xarray.DataArray` Fisher matrices: `matrix`, `expand`,
+  `fix`, `marginalize`, `inv`, `errors`, `transform`, `combine`, and
+  `gaussian_prior`.
 - `dataset()` to bundle a Fisher matrix with fiducials and other metadata.
 - `plot()` for corner plots of analytic Gaussians, with a GetDist backend and a
   `PlotBackend` interface for additional backends.
