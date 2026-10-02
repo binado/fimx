@@ -122,7 +122,7 @@ def transform(F: xr.DataArray, jacobian: xr.DataArray) -> xr.DataArray:
     F : xarray.DataArray
         Matrix satisfying the canonical matrix contract.
     jacobian : xarray.DataArray
-        Finite real array with dimensions ``('old_parameter', 'new_parameter')``
+        Finite real array with dimensions ``('old', 'new')``
         and unique string coordinates. Entries are
         ``J[i, j] = d theta_i / d phi_j``. Old labels must match all F labels;
         rows are reordered to F. New labels must be nonempty.
@@ -142,31 +142,29 @@ def transform(F: xr.DataArray, jacobian: xr.DataArray) -> xr.DataArray:
     values, labels = _validate_matrix(F)
     if not isinstance(jacobian, xr.DataArray):
         raise TypeError("The Jacobian must be an xarray.DataArray.")
-    if jacobian.dims != ("old_parameter", "new_parameter"):
-        raise ValueError(
-            "Jacobian dimensions must be ('old_parameter', 'new_parameter')."
-        )
-    old = _coordinate_labels(jacobian, "old_parameter")
-    new = _coordinate_labels(jacobian, "new_parameter")
+    if jacobian.dims != ("old", "new"):
+        raise ValueError("Jacobian dimensions must be ('old', 'new').")
+    old = _coordinate_labels(jacobian, "old")
+    new = _coordinate_labels(jacobian, "new")
     if set(old) != set(labels):
         raise ValueError(
             "Jacobian old labels must match the complete matrix parameters."
         )
     J = xr.DataArray(
-        _real_values(jacobian.sel(old_parameter=labels).values),
-        dims=("old_parameter", "new_parameter"),
-        coords={"old_parameter": labels, "new_parameter": new},
-    ).rename(old_parameter="col")
-    right = linalg.matmul(values, J, dims=("row", "col", "new_parameter"))
-    left = J.transpose("new_parameter", "col")
-    right = right.rename(row="old_parameter", new_parameter="new_parameter_right")
+        _real_values(jacobian.sel(old=labels).values),
+        dims=("old", "new"),
+        coords={"old": labels, "new": new},
+    ).rename(old="col")
+    right = linalg.matmul(values, J, dims=("row", "col", "new"))
+    left = J.transpose("new", "col")
+    right = right.rename(row="old", new="new_right")
     result = linalg.matmul(
         left,
         right,
         dims=(
-            ("new_parameter", "col"),
-            ("old_parameter", "new_parameter_right"),
+            ("new", "col"),
+            ("old", "new_right"),
         ),
-    ).rename(new_parameter="row", new_parameter_right="col")
+    ).rename(new="row", new_right="col")
     raw = result.values
     return _new_matrix(raw / 2 + raw.T / 2, new)

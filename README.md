@@ -90,7 +90,7 @@ negative standard deviations raise `ValueError`.
 
 ### Changes of variables
 
-The Jacobian must have dimensions `("old_parameter", "new_parameter")`,
+The Jacobian must have dimensions `("old", "new")`,
 finite real values, and unique string coordinates on both axes. Its orientation
 is **`J[i, j] = d theta_i / d phi_j`**, where theta denotes the old parameters
 and phi the new ones. All old parameters must be present exactly once; rows
@@ -102,8 +102,8 @@ determines the output. Rectangular Jacobians are supported.
 # Rows deliberately appear in reverse order to F.
 J = xr.DataArray(
     [[1.0], [2.0]],
-    dims=("old_parameter", "new_parameter"),
-    coords={"old_parameter": ["b", "a"], "new_parameter": ["x"]},
+    dims=("old", "new"),
+    coords={"old": ["b", "a"], "new": ["x"]},
 )
 G = transform(F, J)  # [[22.0]]
 ```
