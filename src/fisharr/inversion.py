@@ -2,19 +2,20 @@
 
 import numpy as np
 import xarray as xr
-from numpy.typing import NDArray
+from xarray_einstats import linalg
 
 from .construction import _new_matrix, _validate_matrix
 
 
-def _solve(
-    values: NDArray[np.float64], rhs: NDArray[np.float64]
-) -> NDArray[np.float64]:
-    """Solve a positive definite system using Cholesky, without fallback."""
-    chol = np.linalg.cholesky(values)
-    return np.asarray(
-        np.linalg.solve(chol.T, np.linalg.solve(chol, rhs)), dtype=np.float64
-    )
+def _solve(values: xr.DataArray, rhs: xr.DataArray) -> xr.DataArray:
+    """Solve a positive definite system using labeled Cholesky operations."""
+    chol = linalg.cholesky(values, dims=("row", "col"))
+    intermediate = linalg.solve(chol, rhs, dims=("row", "col", "rhs_col"))
+    return linalg.solve(
+        chol.transpose("col", "row"),
+        intermediate,
+        dims=("col", "row", "rhs_col"),
+    ).rename(rhs_col="col")
 
 
 def inv(F: xr.DataArray) -> xr.DataArray:
@@ -38,8 +39,14 @@ def inv(F: xr.DataArray) -> xr.DataArray:
         If the matrix contract is violated.
     """
     values, parameters = _validate_matrix(F)
-    covariance = _solve(values, np.eye(len(parameters)))
-    return _new_matrix(covariance / 2 + covariance.T / 2, parameters)
+    rhs = xr.DataArray(
+        np.eye(len(parameters)),
+        dims=("row", "rhs_col"),
+        coords={"row": parameters, "rhs_col": parameters},
+    )
+    covariance = _solve(values, rhs)
+    raw = covariance.values
+    return _new_matrix(raw / 2 + raw.T / 2, parameters)
 
 
 def errors(F: xr.DataArray) -> xr.DataArray:
@@ -63,8 +70,9 @@ def errors(F: xr.DataArray) -> xr.DataArray:
         If the matrix contract is violated.
     """
     covariance = inv(F)
+    diagonal = linalg.diagonal(covariance, dims=("row", "col"))
     return xr.DataArray(
-        np.sqrt(np.diag(covariance.values)),
+        np.sqrt(diagonal.values),
         dims=("parameter",),
         coords={"parameter": covariance.coords["row"].values.copy()},
     )
