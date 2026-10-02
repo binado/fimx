@@ -35,6 +35,7 @@ Changelog = "https://github.com/binado/fimx/blob/main/CHANGELOG.md"
 
 [project.scripts]
 fimx-plot = "fimx.cli:main"
+fimx-invert = "fimx.invert_cli:main"
 
 [build-system]
 requires = ["uv_build>=0.12.7,<0.13.0"]
