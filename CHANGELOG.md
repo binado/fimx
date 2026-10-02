@@ -5,6 +5,18 @@ All notable changes to this project are documented here. The format follows
 adheres to [Semantic Versioning](https://semver.org/). The API is alpha and may
 change before 1.0.
 
+## [Unreleased]
+
+### Added
+
+- `method` argument (`"cholesky"`, `"inv"`, or `"pinv"`) for `inv`, `errors`, and
+  `plot`, and a matching `--inversion-method` option for `fimx-plot`.
+
+### Changed
+
+- `plot` now inverts the Fisher matrices itself; `PlotBackend` implementations
+  receive prepared means and covariances instead of Datasets.
+
 ## [0.1.0]
 
 ### Added

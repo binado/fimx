@@ -4,6 +4,7 @@ import os
 import subprocess
 import sys
 from collections.abc import Iterator
+from pathlib import Path
 
 import matplotlib
 
@@ -16,6 +17,7 @@ import xarray as xr
 from matplotlib.figure import Figure
 
 from fimx import dataset, matrix, plot
+from fimx.cli import main
 
 
 @pytest.fixture(autouse=True)
@@ -179,3 +181,50 @@ else:
     subprocess.run(
         [sys.executable, "-c", script, blocked], check=True, env=os.environ.copy()
     )
+
+
+@pytest.fixture
+def degenerate_forecast() -> xr.Dataset:
+    """Return a forecast where ``b`` and ``c`` are perfectly degenerate."""
+    return dataset(
+        matrix([[4, 0, 0], [0, 1, 1], [0, 1, 1]], ["a", "b", "c"]),
+        {
+            "fiducials": xr.DataArray(
+                [0, 0, 0], dims="row", coords={"row": ["a", "b", "c"]}
+            )
+        },
+    )
+
+
+def test_plot_pinv_handles_degenerate_fisher(degenerate_forecast: xr.Dataset) -> None:
+    figure = plot({"survey": degenerate_forecast}, parameters=["a"], method="pinv")
+    assert isinstance(figure, Figure)
+
+
+def test_plot_default_method_rejects_degenerate_fisher(
+    degenerate_forecast: xr.Dataset,
+) -> None:
+    with pytest.raises(np.linalg.LinAlgError):
+        plot({"survey": degenerate_forecast}, parameters=["a"])
+
+
+def test_plot_unknown_method_raises(forecast: xr.Dataset) -> None:
+    with pytest.raises(ValueError, match="Unknown inversion method"):
+        plot({"survey": forecast}, method="lu")  # ty: ignore[invalid-argument-type]
+
+
+def test_cli_inversion_method_pinv_saves_degenerate_figure(
+    degenerate_forecast: xr.Dataset, tmp_path: Path
+) -> None:
+    source = tmp_path / "survey.nc"
+    degenerate_forecast.to_netcdf(source)
+    figure_file = tmp_path / "out.png"
+    argv = ["--file", str(source), "--figure-file", str(figure_file)]
+    argv += ["--parameters", "a", "--inversion-method", "pinv"]
+    main(argv)
+    assert figure_file.exists()
+
+
+def test_cli_unknown_inversion_method_exits(tmp_path: Path) -> None:
+    with pytest.raises(SystemExit):
+        main(["--file", str(tmp_path / "x.nc"), "--inversion-method", "lu"])

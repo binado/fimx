@@ -3,18 +3,17 @@
 from collections.abc import Mapping, Sequence
 from typing import Any
 
-import xarray as xr
 from getdist import plots
 from getdist.gaussian_mixtures import GaussianND
 from matplotlib.figure import Figure
 
-from .base import PlotBackend, _prepare
+from .base import PlotBackend, _Gaussian
 
 
 def plot(
-    datasets: Mapping[str, xr.Dataset],
+    names: Sequence[str],
+    distributions: Sequence[_Gaussian],
     *,
-    parameters: Sequence[str] | None = None,
     filled: bool = True,
     backend_kwargs: Mapping[str, Any] | None = None,
 ) -> Figure:
@@ -22,10 +21,10 @@ def plot(
 
     Parameters
     ----------
-    datasets : mapping of str to xarray.Dataset
-        Forecasts containing ``fisher`` and ``fiducials`` variables.
-    parameters : sequence of str, optional
-        Ordered parameter selection; otherwise use the common parameters.
+    names : sequence of str
+        Ordered parameter names matching the distributions' axes.
+    distributions : sequence of _Gaussian
+        Prepared marginal means and covariances, one per forecast.
     filled : bool
         Whether to fill the two-dimensional contours.
     backend_kwargs : mapping, optional
@@ -47,7 +46,7 @@ def plot(
         raise TypeError(
             f"Backend options cannot override: {', '.join(sorted(reserved))}."
         )
-    names, distributions = _prepare(datasets, parameters)
+    names = list(names)
     roots = [
         GaussianND(item.mean, item.covariance, names=names, label=item.label)
         for item in distributions
