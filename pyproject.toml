@@ -1,14 +1,34 @@
 [project]
-name = "fishy"
+name = "fisharr"
 version = "0.1.0"
-description = "Lightweight python library for manipulating Fisher matrices"
+description = "Dense Fisher matrix functions on labeled xarray arrays"
 readme = "README.md"
 authors = [
     { name = "binado", email = "bernardopveronese@gmail.com" }
 ]
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "numpy",
+    "xarray",
+]
+
+[project.optional-dependencies]
+io = ["h5netcdf[h5py]"]
 
 [build-system]
 requires = ["uv_build>=0.9.18,<0.10.0"]
 build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "ipykernel>=7.1.0",
+    "matplotlib>=3.10.8",
+    "pytest>=9.0.2",
+    "h5netcdf[h5py]",
+]
+
+[tool.ruff]
+extend-exclude = ["examples"]
+
+[tool.ty.src]
+include = ["src", "tests"]
