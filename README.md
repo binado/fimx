@@ -179,12 +179,17 @@ NetCDF Datasets containing `fisher` and `fiducials`:
 ```sh
 uv add 'fisharr[io,plotting]'
 fisharr-plot --file survey-a.nc --file survey-b.nc \
-    --figure-file constraints.png --figure-dpi 200
+    --figure-file constraints.png --figure-dpi 200 \
+    --parameters a b --no-filled --backend getdist \
+    --backend-kwargs '{"contour_colors": ["C0", "C1"]}'
 ```
 
 Each input filename stem becomes its legend label, so stems must be unique.
 The output defaults to `plot.png` at 150 dpi. `fisharr.io.load_dataset(path)`
 loads NetCDF Datasets with the optional `h5netcdf` engine.
+Use `--parameters` to select and order parameters, `--no-filled` to draw line
+contours, `--backend` to select a backend, and `--backend-kwargs` to pass a JSON
+object of backend-specific options.
 
 GetDist and Matplotlib are optional and loaded only when plotting is requested.
 `fisharr.plotting.base.PlotBackend` defines the callable interface for additional

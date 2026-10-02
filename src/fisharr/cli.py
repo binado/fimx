@@ -1,7 +1,8 @@
 """Command-line interface for plotting Fisher forecasts."""
 
-from argparse import ArgumentParser
+from argparse import ArgumentParser, BooleanOptionalAction
 from collections.abc import Sequence
+from json import loads
 from pathlib import Path
 
 from .io import load_dataset
@@ -36,6 +37,30 @@ def _parser() -> ArgumentParser:
         metavar="DPI",
         help="Output resolution in dots per inch (default: 150).",
     )
+    parser.add_argument(
+        "--parameters",
+        nargs="+",
+        metavar="NAME",
+        help="Parameters to include in the plot, in the requested order.",
+    )
+    parser.add_argument(
+        "--filled",
+        action=BooleanOptionalAction,
+        default=True,
+        help="Fill two-dimensional contours (default; use --no-filled for lines).",
+    )
+    parser.add_argument(
+        "--backend",
+        default="getdist",
+        metavar="NAME",
+        help="Plotting backend (default: getdist).",
+    )
+    parser.add_argument(
+        "--backend-kwargs",
+        type=loads,
+        metavar="JSON",
+        help="JSON object of backend-specific plotting options.",
+    )
     return parser
 
 
@@ -58,7 +83,13 @@ def main(argv: Sequence[str] | None = None) -> None:
             )
         datasets[label] = load_dataset(path)
 
-    figure = plot(datasets)
+    figure = plot(
+        datasets,
+        parameters=args.parameters,
+        filled=args.filled,
+        backend=args.backend,
+        backend_kwargs=args.backend_kwargs,
+    )
     figure.savefig(args.figure_file, dpi=args.figure_dpi)
 
 
