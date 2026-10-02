@@ -7,7 +7,7 @@ import numpy as np
 import xarray as xr
 from numpy.typing import ArrayLike
 
-from .construction import _labels, _real_values, _validate_matrix
+from .construction import _plot_labels, _real_values, _validate_matrix
 from .datasets import dataset
 
 # Loose bound on |F @ C @ F - F| relative to max|F|. It is meant to catch a
@@ -76,7 +76,8 @@ def save_dataset(
         ``fiducials``.
     labels : sequence of str, optional
         Unique axis labels for plotting, one per parameter in matrix order,
-        stored as ``labels``.
+        stored as ``labels``. They are LaTeX math without the enclosing
+        ``$``, for example ``r"\\Omega_m"``.
 
     Raises
     ------
@@ -100,7 +101,7 @@ def save_dataset(
         _real_values(fiducials)
         arrays["fiducials"] = fiducials
     if labels is not None:
-        arrays["labels"] = _labels(labels, name="labels")
+        arrays["labels"] = _plot_labels(labels)
     dataset(fisher, arrays).to_netcdf(path, engine="h5netcdf")
 
 

@@ -50,14 +50,16 @@ def plot(
         order. Each Dataset requires ``fisher`` on ``('row', 'col')`` and
         finite ``fiducials`` on ``row`` with matching parameter coordinates.
         An optional string variable ``labels`` on ``row`` supplies axis
-        labels; forecasts must agree on the labels of shared parameters.
+        labels as LaTeX math without enclosing ``$``; forecasts must agree on
+        the labels of shared parameters.
     parameters : sequence of str, optional
         Unique parameters present in every forecast, in plotting order.
         Defaults to their intersection in the first forecast's order.
         Omitted parameters are marginalized over.
     parameter_labels : mapping of str to str, optional
-        Display labels keyed by parameter name. They take precedence over the
-        Datasets' ``labels``; parameters without either keep their name.
+        Display labels keyed by parameter name, as LaTeX math without
+        enclosing ``$``. They take precedence over the Datasets' ``labels``;
+        parameters without either keep their name.
     filled : bool
         Whether to fill two-dimensional contours. Default is True.
     method : {'cholesky', 'inv', 'pinv'}

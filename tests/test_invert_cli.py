@@ -87,7 +87,7 @@ def test_invert_nonfinite_condition_number_is_json_null(tmp_path: Path, capsys) 
 def _forecast(tmp_path: Path) -> tuple[Path, xr.DataArray]:
     F = matrix([[4, 1], [1, 2]], ["a", "b"])
     path = tmp_path / "forecast.nc"
-    save_dataset(path, F, fiducials=[0.0, 1.0], labels=["$a$", "$b$"])
+    save_dataset(path, F, fiducials=[0.0, 1.0], labels=["a_1", "b_1"])
     return path, F
 
 
@@ -103,7 +103,7 @@ def test_save_writes_covariance_and_keeps_other_variables(
     np.testing.assert_allclose(saved["covariance"].values, inv(F).values)
     assert saved["covariance"].attrs["method"] == "cholesky"
     np.testing.assert_allclose(saved["fiducials"].values, [0.0, 1.0])
-    assert saved["labels"].values.tolist() == ["$a$", "$b$"]
+    assert saved["labels"].values.tolist() == ["a_1", "b_1"]
     assert "cholesky" in capsys.readouterr().err
 
 

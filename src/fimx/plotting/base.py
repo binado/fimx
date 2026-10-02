@@ -10,7 +10,7 @@ import numpy as np
 import xarray as xr
 from numpy.typing import NDArray
 
-from ..construction import _labels, _real_values, _validate_matrix
+from ..construction import _labels, _plot_labels, _real_values, _validate_matrix
 from ..inversion import InversionMethod, inv
 
 if TYPE_CHECKING:
@@ -69,7 +69,7 @@ def _validate_dataset(forecast: xr.Dataset) -> xr.Dataset:
         if display.dims != ("row",):
             raise ValueError("Plot label dimensions must be exactly ('row',).")
         variables["labels"] = xr.DataArray(
-            _labels(display.values.tolist(), name="labels"),
+            _plot_labels(display.values.tolist()),
             dims="row",
             coords={"row": labels},
         )

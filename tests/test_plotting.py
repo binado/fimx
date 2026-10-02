@@ -291,3 +291,14 @@ def test_cli_uses_dataset_labels(forecast: xr.Dataset, tmp_path: Path) -> None:
     figure_file = tmp_path / "out.png"
     main(["--file", str(source), "--figure-file", str(figure_file)])
     assert figure_file.exists()
+
+
+def test_dataset_labels_with_dollar_signs_raise(forecast: xr.Dataset) -> None:
+    with pytest.raises(ValueError, match="must not include"):
+        plot({"survey": _labeled(forecast, ["$a$", "$b$", "$c$"])})
+
+
+def test_latex_dataset_labels_render(forecast: xr.Dataset) -> None:
+    figure = plot({"survey": _labeled(forecast, [r"\Omega_m", "h", r"\sigma_8"])})
+    figure.canvas.draw()
+    assert r"$\Omega_m$" in _xlabels(figure)

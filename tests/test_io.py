@@ -18,14 +18,14 @@ def test_round_trip_with_all_fields(F: xr.DataArray, tmp_path: Path) -> None:
         F,
         covariance=covariance,
         fiducials=[1.0, 2.0, 3.0],
-        labels=["$a$", "$b$", "$c$"],
+        labels=["a_1", "b_1", "c_1"],
     )
     loaded = load_dataset(path)
     assert set(loaded.data_vars) == {"fisher", "covariance", "fiducials", "labels"}
     np.testing.assert_allclose(loaded["fisher"].values, F.values)
     np.testing.assert_allclose(loaded["covariance"].values, covariance.values)
     np.testing.assert_allclose(loaded["fiducials"].values, [1.0, 2.0, 3.0])
-    assert loaded["labels"].values.tolist() == ["$a$", "$b$", "$c$"]
+    assert loaded["labels"].values.tolist() == ["a_1", "b_1", "c_1"]
     assert loaded["covariance"].attrs["condition_number"] == pytest.approx(
         covariance.attrs["condition_number"]
     )
@@ -92,3 +92,8 @@ def test_invalid_fisher_raises(tmp_path: Path) -> None:
     broken = xr.DataArray(np.eye(2), dims=("row", "col"))
     with pytest.raises(ValueError):
         save_dataset(tmp_path / "forecast.nc", broken)
+
+
+def test_labels_with_dollar_signs_raise(F: xr.DataArray, tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="must not include"):
+        save_dataset(tmp_path / "forecast.nc", F, labels=["$a$", "$b$", "$c$"])

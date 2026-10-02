@@ -210,7 +210,7 @@ save_dataset(
     F,
     covariance=inv(F, metadata=True),  # optional, never computed for you
     fiducials=[0.3, 0.7, 1.0],
-    labels=[r"$\Omega_m$", r"$h$", r"$\sigma_8$"],
+    labels=[r"\Omega_m", "h", r"\sigma_8"],
 )
 forecast = load_dataset("forecast.nc")
 ```
@@ -220,7 +220,7 @@ forecast = load_dataset("forecast.nc")
 | `fisher` | `row`, `col` | yes | Fisher matrix. |
 | `covariance` | `row`, `col` | no | Inverse or pseudoinverse of `fisher`; keeps the `attrs` of `inv(..., metadata=True)`. |
 | `fiducials` | `row` | no (needed to plot) | Reference parameter values. |
-| `labels` | `row` | no | Unique axis labels for plotting. |
+| `labels` | `row` | no | Unique axis labels for plotting, as LaTeX math without the enclosing `$`. |
 
 `covariance` is checked loosely against `fisher` so that a matrix from another
 forecast is rejected; it is not recomputed.

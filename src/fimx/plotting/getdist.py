@@ -25,7 +25,9 @@ def plot(
     names : sequence of str
         Ordered parameter names used to identify the distributions' axes.
     parameter_labels : sequence of str
-        Ordered display labels matching ``names``.
+        Ordered display labels matching ``names``. GetDist renders them as
+        LaTeX math, so they must not include enclosing ``$``. A label equal
+        to its name is treated as absent and the plain name is drawn.
     distributions : sequence of _Gaussian
         Prepared marginal means and covariances, one per forecast.
     filled : bool
@@ -50,7 +52,10 @@ def plot(
             f"Backend options cannot override: {', '.join(sorted(reserved))}."
         )
     names = list(names)
-    parameter_labels = list(parameter_labels)
+    parameter_labels = [
+        "" if label == name else label
+        for name, label in zip(names, parameter_labels, strict=True)
+    ]
     roots = [
         GaussianND(
             item.mean,
