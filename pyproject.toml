@@ -15,6 +15,7 @@ dependencies = [
 
 [project.optional-dependencies]
 io = ["h5netcdf[h5py]"]
+plotting = ["getdist", "matplotlib"]
 
 [build-system]
 requires = ["uv_build>=0.12.7,<0.13.0"]
