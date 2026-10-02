@@ -17,6 +17,8 @@ change before 1.0.
 - `--save` option for `fimx invert`, which writes the Dataset with a freshly
   computed covariance.
 - `plot` and `fimx plot` use an optional `labels` variable for axis labels.
+- Optional `cli` extra, which provides the `fimx` command and includes the
+  `io` extra.
 
 ### Changed
 

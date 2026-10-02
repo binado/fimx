@@ -1,4 +1,7 @@
 import json
+import os
+import subprocess
+import sys
 from pathlib import Path
 
 import numpy as np
@@ -193,3 +196,27 @@ def test_save_works_with_json_output(tmp_path: Path) -> None:
     assert result.exit_code == 0
     json.loads(result.stdout)
     assert out.exists()
+
+
+def test_cli_without_typer_explains_the_extra() -> None:
+    script = """
+import importlib.abc
+import sys
+
+class BlockTyper(importlib.abc.MetaPathFinder):
+    def find_spec(self, fullname, path=None, target=None):
+        if fullname == "typer" or fullname.startswith("typer."):
+            raise ModuleNotFoundError(name="typer")
+
+sys.meta_path.insert(0, BlockTyper())
+import fimx
+from fimx.__main__ import main
+assert "typer" not in sys.modules
+try:
+    main(["--help"])
+except SystemExit as exc:
+    assert "uv add 'fimx[cli]'" in str(exc.code)
+else:
+    raise AssertionError("Expected missing-extra error")
+"""
+    subprocess.run([sys.executable, "-c", script], check=True, env=os.environ.copy())

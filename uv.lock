@@ -224,12 +224,15 @@ version = "0.2.0"
 source = { editable = "." }
 dependencies = [
     { name = "numpy" },
-    { name = "typer" },
     { name = "xarray" },
     { name = "xarray-einstats" },
 ]
 
 [package.optional-dependencies]
+cli = [
+    { name = "h5netcdf", extra = ["h5py"] },
+    { name = "typer" },
+]
 io = [
     { name = "h5netcdf", extra = ["h5py"] },
 ]
@@ -248,19 +251,21 @@ dev = [
     { name = "pytest" },
     { name = "ruff" },
     { name = "ty" },
+    { name = "typer" },
 ]
 
 [package.metadata]
 requires-dist = [
+    { name = "fimx", extras = ["io"], marker = "extra == 'cli'" },
     { name = "getdist", marker = "extra == 'plotting'" },
     { name = "h5netcdf", extras = ["h5py"], marker = "extra == 'io'" },
     { name = "matplotlib", marker = "extra == 'plotting'" },
     { name = "numpy" },
-    { name = "typer", specifier = ">=0.27.2" },
+    { name = "typer", marker = "extra == 'cli'", specifier = ">=0.27.2" },
     { name = "xarray" },
     { name = "xarray-einstats", specifier = ">=0.10.0" },
 ]
-provides-extras = ["io", "plotting"]
+provides-extras = ["io", "plotting", "cli"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -272,6 +277,7 @@ dev = [
     { name = "pytest", specifier = ">=9.0.2" },
     { name = "ruff", specifier = ">=0.16.0" },
     { name = "ty", specifier = ">=0.0.83" },
+    { name = "typer", specifier = ">=0.27.2" },
 ]
 
 [[package]]
