@@ -22,7 +22,23 @@ def _solve(values: xr.DataArray, rhs: xr.DataArray) -> xr.DataArray:
     ).rename(rhs_col="col")
 
 
-def inv(F: xr.DataArray, *, method: InversionMethod = "cholesky") -> xr.DataArray:
+def _diagnostics(values: xr.DataArray, inverse: xr.DataArray) -> dict[str, float]:
+    """Return the condition number of a matrix and the residual of its inverse."""
+    eigenvalues = np.linalg.eigvalsh(values.values)
+    condition = (
+        float(eigenvalues[-1] / eigenvalues[0]) if eigenvalues[0] > 0 else np.inf
+    )
+    identity = np.eye(values.shape[0])
+    residual = float(np.max(np.abs(values.values @ inverse.values - identity)))
+    return {"condition_number": condition, "residual": residual}
+
+
+def inv(
+    F: xr.DataArray,
+    *,
+    method: InversionMethod = "cholesky",
+    metadata: bool = False,
+) -> xr.DataArray:
     """Return the labeled inverse, or covariance of a Fisher matrix.
 
     Parameters
@@ -36,6 +52,9 @@ def inv(F: xr.DataArray, *, method: InversionMethod = "cholesky") -> xr.DataArra
         pseudoinverse, which always succeeds but assigns zero variance to
         unconstrained (null-space) directions, so degenerate parameters appear
         perfectly constrained rather than unconstrained.
+    metadata : bool
+        If true, record inversion diagnostics in the result's ``attrs``; see
+        Notes.
 
     Returns
     -------
@@ -49,6 +68,14 @@ def inv(F: xr.DataArray, *, method: InversionMethod = "cholesky") -> xr.DataArra
         (``'cholesky'``).
     ValueError
         If the matrix contract is violated or ``method`` is unknown.
+
+    Notes
+    -----
+    With ``metadata=True`` the result's ``attrs`` hold ``method``,
+    ``condition_number`` (largest over smallest eigenvalue of ``F``, ``inf``
+    unless ``F`` is positive definite) and ``residual`` (``max|F @ C - I|``).
+    Like any xarray attributes, they describe this inversion only and are
+    dropped by most subsequent operations.
     """
     if method not in get_args(InversionMethod):
         raise ValueError(
@@ -67,7 +94,10 @@ def inv(F: xr.DataArray, *, method: InversionMethod = "cholesky") -> xr.DataArra
         result = linalg.inv(values, dims=("row", "col"))
     else:
         result = linalg.pinv(values, dims=("row", "col"), hermitian=True)
-    return _symmetrize(result)
+    covariance = _symmetrize(result)
+    if metadata:
+        covariance.attrs = {"method": method, **_diagnostics(values, covariance)}
+    return covariance
 
 
 def errors(F: xr.DataArray, *, method: InversionMethod = "cholesky") -> xr.DataArray:

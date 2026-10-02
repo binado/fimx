@@ -34,7 +34,7 @@ posterior = combine(F, prior)
 | `expand(F, parameters)` | Embed in a larger or reordered parameter set, filling with zeros. |
 | `fix(F, parameters)` | Remove names through a principal submatrix. |
 | `marginalize(F, parameters)` | Remove names through the Schur complement. |
-| `inv(F, method="cholesky")` | Return the inverse; `method` is `cholesky`, `inv`, or `pinv`. |
+| `inv(F, method="cholesky", metadata=False)` | Return the inverse; `method` is `cholesky`, `inv`, or `pinv`. With `metadata=True`, `attrs` hold `method`, `condition_number` and `residual`. |
 | `errors(F, method="cholesky")` | Return marginalized standard deviations. |
 | `transform(F, jacobian)` | Change variables using `J.T @ F @ J`. |
 | `combine(*matrices)` | Sum independent information over the parameter union. |
