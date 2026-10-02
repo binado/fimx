@@ -228,3 +228,66 @@ def test_cli_inversion_method_pinv_saves_degenerate_figure(
 def test_cli_unknown_inversion_method_exits(tmp_path: Path) -> None:
     with pytest.raises(SystemExit):
         main(["--file", str(tmp_path / "x.nc"), "--inversion-method", "lu"])
+
+
+def _labeled(forecast: xr.Dataset, labels: list[str]) -> xr.Dataset:
+    return forecast.assign(labels=("row", np.array(labels, dtype=object)))
+
+
+def _xlabels(figure: Figure) -> list[str]:
+    return [ax.get_xlabel() for ax in figure.axes if ax.get_xlabel()]
+
+
+def test_dataset_labels_are_used(forecast: xr.Dataset) -> None:
+    figure = plot({"survey": _labeled(forecast, ["alpha", "beta", "gamma"])})
+    assert all(
+        label in " ".join(_xlabels(figure)) for label in ["alpha", "beta", "gamma"]
+    )
+
+
+def test_parameter_labels_override_dataset_labels(forecast: xr.Dataset) -> None:
+    figure = plot(
+        {"survey": _labeled(forecast, ["alpha", "beta", "gamma"])},
+        parameter_labels={"a": "override"},
+    )
+    text = " ".join(_xlabels(figure))
+    assert "override" in text
+    assert "alpha" not in text
+    assert "beta" in text
+
+
+def test_conflicting_dataset_labels_raise(forecast: xr.Dataset) -> None:
+    with pytest.raises(ValueError, match="Conflicting plot labels"):
+        plot(
+            {
+                "one": _labeled(forecast, ["alpha", "beta", "gamma"]),
+                "two": _labeled(forecast, ["other", "beta", "gamma"]),
+            }
+        )
+
+
+def test_conflicting_labels_of_unplotted_parameters_are_ignored(
+    forecast: xr.Dataset,
+) -> None:
+    figure = plot(
+        {
+            "one": _labeled(forecast, ["alpha", "beta", "gamma"]),
+            "two": _labeled(forecast, ["other", "beta", "gamma"]),
+        },
+        parameters=["b", "c"],
+    )
+    assert isinstance(figure, Figure)
+
+
+@pytest.mark.parametrize("labels", [["a", "b", 3], ["x", "x", "y"]])
+def test_invalid_dataset_labels_raise(forecast: xr.Dataset, labels: list) -> None:
+    with pytest.raises(ValueError):
+        plot({"survey": _labeled(forecast, labels)})
+
+
+def test_cli_uses_dataset_labels(forecast: xr.Dataset, tmp_path: Path) -> None:
+    source = tmp_path / "survey.nc"
+    _labeled(forecast, ["alpha", "beta", "gamma"]).to_netcdf(source)
+    figure_file = tmp_path / "out.png"
+    main(["--file", str(source), "--figure-file", str(figure_file)])
+    assert figure_file.exists()

@@ -56,16 +56,50 @@ def _validate_dataset(forecast: xr.Dataset) -> xr.Dataset:
     reference = forecast["fiducials"]
     if reference.dims != ("row",):
         raise ValueError("Fiducial dimensions must be exactly ('row',).")
-    return xr.Dataset(
-        {
-            "fisher": fisher,
-            "fiducials": xr.DataArray(
-                _real_values(reference.values).copy(),
-                dims="row",
-                coords={"row": labels},
-            ),
-        }
-    )
+    variables = {
+        "fisher": fisher,
+        "fiducials": xr.DataArray(
+            _real_values(reference.values).copy(),
+            dims="row",
+            coords={"row": labels},
+        ),
+    }
+    if "labels" in forecast.data_vars:
+        display = forecast["labels"]
+        if display.dims != ("row",):
+            raise ValueError("Plot label dimensions must be exactly ('row',).")
+        variables["labels"] = xr.DataArray(
+            _labels(display.values.tolist(), name="labels"),
+            dims="row",
+            coords={"row": labels},
+        )
+    return xr.Dataset(variables)
+
+
+def _dataset_labels(
+    forecasts: Mapping[str, xr.Dataset], names: Sequence[str]
+) -> dict[str, str]:
+    """Collect the ``labels`` variable of each forecast for the plotted names."""
+    collected: dict[str, str] = {}
+    sources: dict[str, str] = {}
+    for file_label, forecast in forecasts.items():
+        if "labels" not in forecast.data_vars:
+            continue
+        by_name = dict(
+            zip(forecast.row.values.tolist(), forecast["labels"].values.tolist())
+        )
+        for name in names:
+            if name not in by_name:
+                continue
+            if name in collected and collected[name] != by_name[name]:
+                raise ValueError(
+                    f"Conflicting plot labels for parameter {name!r}: "
+                    f"{sources[name]!r} uses {collected[name]!r}, but "
+                    f"{file_label!r} uses {by_name[name]!r}."
+                )
+            collected[name] = by_name[name]
+            sources[name] = file_label
+    return collected
 
 
 def _prepare(
@@ -105,10 +139,8 @@ def _prepare(
             for name, label in parameter_labels.items()
         ):
             raise ValueError("Parameter label keys and values must be strings.")
-    plot_names = [
-        parameter_labels.get(name, name) if parameter_labels is not None else name
-        for name in names
-    ]
+    display = {**_dataset_labels(forecasts, names), **(parameter_labels or {})}
+    plot_names = [display.get(name, name) for name in names]
     distributions = []
     for label, ds in forecasts.items():
         covariance = inv(ds["fisher"], method=method).sel(row=names, col=names)

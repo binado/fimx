@@ -154,18 +154,17 @@ Datasets that contain `fisher` and `fiducials`:
 uv add 'fimx[io,plotting]'
 fimx-plot --file survey-a.nc --file survey-b.nc \
     --figure-file constraints.png --figure-dpi 200 \
-    --parameters a b --plot-label-var latex_label --no-filled --backend getdist \
+    --parameters a b --no-filled --backend getdist \
     --backend-kwargs '{"contour_colors": ["C0", "C1"]}'
 ```
 
 Each file stem becomes a legend label, so stems must be unique. The output
 defaults to `plot.png` at 150 dpi. `--parameters` selects and orders
-parameters. `--plot-label-var` optionally names a string variable on the
-`row` dimension that supplies axis labels; it must exist in every file, and
-labels for shared plotted parameters must agree across files. Without this
-option, parameter names are used. `--no-filled` draws line contours,
-`--inversion-method` picks `cholesky`, `inv`, or `pinv`, `--backend` picks a
-backend, and `--backend-kwargs` takes a JSON object.
+parameters. Axis labels come from an optional `labels` variable (see
+[Storage](#storage)); labels for shared plotted parameters must agree across
+files, and parameter names are used where there are none. `--no-filled` draws
+line contours, `--inversion-method` picks `cholesky`, `inv`, or `pinv`,
+`--backend` picks a backend, and `--backend-kwargs` takes a JSON object.
 `fimx.io.load_dataset(path)` loads the same files from Python.
 
 `fimx-invert` reports matrix conditioning and inversion residuals from either
@@ -184,13 +183,40 @@ rank, eigenvalue range, and positive-definite status.
 
 ## Storage
 
-There is no `fimx` file format; use xarray. The `io` extra supplies `h5netcdf`.
+Matrices are plain xarray objects, so any xarray writer works. The `io` extra
+supplies `h5netcdf`.
 
 ```python
 F.to_netcdf("fisher.nc", engine="h5netcdf")
 restored = xr.load_dataarray("fisher.nc", engine="h5netcdf")
 C_restored = inv(restored)
 ```
+
+For forecasts, `fimx.io.save_dataset` writes the Dataset convention read by
+`plot`, `fimx-plot` and `fimx-invert`; `fimx.io.load_dataset` reads it back.
+
+```python
+from fimx.io import load_dataset, save_dataset
+
+save_dataset(
+    "forecast.nc",
+    F,
+    covariance=inv(F, metadata=True),  # optional, never computed for you
+    fiducials=[0.3, 0.7, 1.0],
+    labels=[r"$\Omega_m$", r"$h$", r"$\sigma_8$"],
+)
+forecast = load_dataset("forecast.nc")
+```
+
+| Variable | Dimensions | Required | Meaning |
+| --- | --- | --- | --- |
+| `fisher` | `row`, `col` | yes | Fisher matrix. |
+| `covariance` | `row`, `col` | no | Inverse or pseudoinverse of `fisher`; keeps the `attrs` of `inv(..., metadata=True)`. |
+| `fiducials` | `row` | no (needed to plot) | Reference parameter values. |
+| `labels` | `row` | no | Unique axis labels for plotting. |
+
+`covariance` is checked loosely against `fisher` so that a matrix from another
+forecast is rejected; it is not recomputed.
 
 ## More
 
