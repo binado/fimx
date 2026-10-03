@@ -15,7 +15,7 @@ from fimx.io import load_dataset, save_dataset
 runner = CliRunner()
 
 
-def test_invert_dataarray_default_methods_and_text_output(tmp_path: Path) -> None:
+def test_invert_default_cholesky_and_text_output(tmp_path: Path) -> None:
     F = matrix([[4, 1], [1, 2]], ["a", "b"])
     path = tmp_path / "fisher.nc"
     F.to_netcdf(path, engine="h5netcdf")
@@ -27,8 +27,8 @@ def test_invert_dataarray_default_methods_and_text_output(tmp_path: Path) -> Non
     assert "Condition number:" in output
     assert "Numerical rank: 2" in output
     assert "cholesky:" in output
-    assert "inv:" in output
-    assert "pinv:" in output
+    assert "inv:" not in output
+    assert "pinv:" not in output
 
 
 def test_invert_dataset_json_and_selected_method(tmp_path: Path) -> None:
@@ -47,28 +47,31 @@ def test_invert_dataset_json_and_selected_method(tmp_path: Path) -> None:
     assert report["matrix_size"] == 2
     assert report["parameters"] == ["a", "b"]
     assert report["positive_definite"] is True
-    assert list(report["methods"]) == ["inv"]
-    assert report["methods"]["inv"]["success"] is True
-    assert report["methods"]["inv"]["max_abs_residual"] < 1e-12
+    assert report["method"] == "inv"
+    assert report["success"] is True
+    assert report["max_abs_residual"] < 1e-12
+    assert report["error"] is None
 
 
-def test_invert_reports_method_failure_and_continues(tmp_path: Path) -> None:
+def test_invert_selected_pinv_succeeds_on_singular_matrix(tmp_path: Path) -> None:
     F = matrix([[1, 1], [1, 1]], ["a", "b"])
     path = tmp_path / "singular.nc"
     F.to_netcdf(path, engine="h5netcdf")
 
-    result = runner.invoke(app, ["invert", "--file", str(path), "--json"])
+    result = runner.invoke(
+        app,
+        ["invert", "--file", str(path), "--inversion-method", "pinv", "--json"],
+    )
 
     assert result.exit_code == 0
     report = json.loads(result.stdout)
     assert report["rank"] == 1
     assert report["positive_definite"] is False
-    assert report["methods"]["cholesky"]["success"] is False
-    assert report["methods"]["inv"]["success"] is False
-    assert report["methods"]["pinv"]["success"] is True
+    assert report["method"] == "pinv"
+    assert report["success"] is True
 
 
-def test_invert_all_selected_methods_failure_returns_nonzero(tmp_path: Path) -> None:
+def test_invert_method_failure_returns_nonzero(tmp_path: Path) -> None:
     F = matrix([[1, 2], [2, 1]], ["a", "b"])
     path = tmp_path / "indefinite.nc"
     F.to_netcdf(path, engine="h5netcdf")
@@ -80,7 +83,21 @@ def test_invert_all_selected_methods_failure_returns_nonzero(tmp_path: Path) -> 
 
     assert result.exit_code == 1
     report = json.loads(result.stdout)
-    assert report["methods"]["cholesky"]["success"] is False
+    assert report["method"] == "cholesky"
+    assert report["success"] is False
+    assert report["error"] is not None
+
+
+def test_invert_unknown_method_exits(tmp_path: Path) -> None:
+    F = matrix([[4, 1], [1, 2]], ["a", "b"])
+    path = tmp_path / "fisher.nc"
+    F.to_netcdf(path, engine="h5netcdf")
+
+    result = runner.invoke(
+        app, ["invert", "--file", str(path), "--inversion-method", "bogus"]
+    )
+
+    assert result.exit_code != 0
 
 
 def test_invert_nonfinite_condition_number_is_json_null(tmp_path: Path) -> None:
@@ -90,7 +107,7 @@ def test_invert_nonfinite_condition_number_is_json_null(tmp_path: Path) -> None:
 
     result = runner.invoke(app, ["invert", "--file", str(path), "--json"])
 
-    assert result.exit_code == 0
+    assert result.exit_code == 1
     report = json.loads(result.stdout)
     assert report["condition_number"] is None
 
@@ -128,24 +145,13 @@ def test_save_replaces_existing_covariance(tmp_path: Path) -> None:
     assert load_dataset(out)["covariance"].attrs["method"] == "cholesky"
 
 
-def test_save_uses_first_successful_method(tmp_path: Path) -> None:
+def test_save_uses_selected_pinv_on_singular_matrix(tmp_path: Path) -> None:
     F = matrix([[1, 1], [1, 1]], ["a", "b"])
     path = tmp_path / "singular.nc"
     F.to_netcdf(path, engine="h5netcdf")
     out = tmp_path / "out.nc"
 
-    result = runner.invoke(app, ["invert", "--file", str(path), "--save", str(out)])
-
-    assert result.exit_code == 0
-
-    assert load_dataset(out)["covariance"].attrs["method"] == "pinv"
-
-
-def test_save_respects_selected_methods(tmp_path: Path) -> None:
-    path, _ = _forecast(tmp_path)
-    out = tmp_path / "out.nc"
-
-    runner.invoke(
+    result = runner.invoke(
         app,
         [
             "invert",
@@ -153,17 +159,17 @@ def test_save_respects_selected_methods(tmp_path: Path) -> None:
             str(path),
             "--inversion-method",
             "pinv",
-            "--inversion-method",
-            "inv",
             "--save",
             str(out),
         ],
     )
 
-    assert load_dataset(out)["covariance"].attrs["method"] == "inv"
+    assert result.exit_code == 0
+
+    assert load_dataset(out)["covariance"].attrs["method"] == "pinv"
 
 
-def test_save_is_skipped_if_every_method_fails(tmp_path: Path) -> None:
+def test_save_is_skipped_if_method_fails(tmp_path: Path) -> None:
     F = matrix([[1, 2], [2, 1]], ["a", "b"])
     path = tmp_path / "indefinite.nc"
     F.to_netcdf(path, engine="h5netcdf")

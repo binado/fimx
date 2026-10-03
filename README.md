@@ -176,20 +176,18 @@ containing `fisher`; an existing `covariance` is ignored:
 
 ```sh
 fimx invert --file fisher.nc
-fimx invert --file forecast.nc --inversion-method inv \
-    --inversion-method pinv --json
+fimx invert --file forecast.nc --inversion-method inv --json
 fimx invert --file forecast.nc --save forecast-with-covariance.nc
 ```
 
-All three inversion methods (`cholesky`, `inv`, and `pinv`) are evaluated by
-default. Each method reports the maximum absolute element of `F @ F_inv - I`;
-methods that cannot invert the matrix report their error while the remaining
-methods continue. The report also includes the condition number, numerical
-rank, eigenvalue range, and positive-definite status. `--save PATH` writes the
-Dataset, with its `fiducials` and `labels`, plus a new `covariance` from the
-first successful selected method in the order `cholesky`, `inv`, `pinv`; the
+The report evaluates one inversion method, `cholesky` by default, selectable
+with `--inversion-method`. It reports the maximum absolute element of
+`F @ F_inv - I`, or the method's error if it cannot invert the matrix. The
+report also includes the condition number, numerical rank, eigenvalue range,
+and positive-definite status. `--save PATH` writes the Dataset, with its
+`fiducials` and `labels`, plus a new `covariance` from the selected method; the
 method is reported on stderr and recorded in the covariance's `attrs` together
-with its condition number and residual. Nothing is written if every selected
+with its condition number and residual. Nothing is written if the selected
 method fails.
 
 ## Storage

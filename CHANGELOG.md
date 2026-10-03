@@ -24,11 +24,17 @@ change before 1.0.
 
 - `fimx-plot` and `fimx-invert` are subcommands of one `fimx` command:
   `fimx plot` and `fimx invert`.
+- `fimx invert --inversion-method` takes one method (`cholesky` by default)
+  instead of evaluating every method, and the JSON report replaces the
+  per-method `methods` object with top-level `method`, `success`,
+  `max_abs_residual` and `error` keys.
 
 ### Removed
 
 - The `--plot-label-var` option of `fimx plot`; store the labels in a variable
   named `labels` instead.
+- The repeatable `--inversion-method` option of `fimx invert` and the "first
+  successful selected method" fallback of its `--save` option.
 
 ## [0.2.0]
 

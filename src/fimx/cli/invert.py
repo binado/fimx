@@ -1,11 +1,10 @@
 """Invert subcommand."""
 
 import json
-from collections.abc import Sequence
 from dataclasses import dataclass
 from math import isfinite
 from pathlib import Path
-from typing import Annotated, get_args
+from typing import Annotated
 
 import numpy as np
 import typer
@@ -14,7 +13,6 @@ import xarray as xr
 from ..construction import _validate_matrix
 from ..inversion import InversionMethod, inv
 from ..io import load_dataset, save_dataset
-from .options import InversionMethodOption
 
 
 def _load_matrix(dataset: xr.Dataset) -> xr.DataArray:
@@ -30,15 +28,12 @@ def _save_covariance(
     path: Path,
     dataset: xr.Dataset,
     fisher: xr.DataArray,
-    successful: Sequence[InversionMethod],
+    method: InversionMethod,
 ) -> InversionMethod:
-    """Save the Dataset with a covariance from the first successful method.
+    """Save the Dataset with a covariance from the selected method.
 
     Any covariance already in the Dataset is ignored and replaced.
     """
-    method = next(
-        method for method in get_args(InversionMethod) if method in successful
-    )
     labels = dataset["labels"].values.tolist() if "labels" in dataset else None
     fiducials = dataset.get("fiducials")
     save_dataset(
@@ -62,18 +57,8 @@ def _format_number(value: float | None) -> str:
 
 
 @dataclass(frozen=True)
-class MethodInversionReport:
-    """Result for one inversion method."""
-
-    method: InversionMethod
-    success: bool
-    max_abs_residual: float | None = None
-    error: str | None = None
-
-
-@dataclass(frozen=True)
 class InversionReport:
-    """Diagnostics and inversion results for a Fisher matrix."""
+    """Diagnostics and inversion result for a Fisher matrix."""
 
     file: str
     matrix_size: int
@@ -83,7 +68,10 @@ class InversionReport:
     min_eigenvalue: float | None
     max_eigenvalue: float | None
     positive_definite: bool
-    methods: tuple[MethodInversionReport, ...]
+    method: InversionMethod
+    success: bool
+    max_abs_residual: float | None = None
+    error: str | None = None
 
     def __str__(self) -> str:
         """Return a readable, multi-line report for ``print()``."""
@@ -99,30 +87,16 @@ class InversionReport:
                 f"{_format_number(self.max_eigenvalue)}]"
             ),
             f"Positive definite: {self.positive_definite}",
-            "Inversion methods:",
         ]
-        for result in self.methods:
-            if result.success:
-                residual = _format_number(result.max_abs_residual)
-                lines.append(f"  {result.method}: max |F @ F_inv - I| = {residual}")
-            else:
-                lines.append(f"  {result.method}: failed ({result.error})")
+        if self.success:
+            residual = _format_number(self.max_abs_residual)
+            lines.append(f"{self.method}: max |F @ F_inv - I| = {residual}")
+        else:
+            lines.append(f"{self.method}: failed ({self.error})")
         return "\n".join(lines)
 
     def asdict(self) -> dict[str, object]:
         """Return a JSON-compatible dictionary of report values."""
-        methods: dict[str, dict[str, bool | str | float | None]] = {}
-        for result in self.methods:
-            if result.success:
-                methods[result.method] = {
-                    "success": True,
-                    "max_abs_residual": result.max_abs_residual,
-                }
-            else:
-                methods[result.method] = {
-                    "success": False,
-                    "error": result.error,
-                }
         return {
             "file": self.file,
             "matrix_size": self.matrix_size,
@@ -134,52 +108,54 @@ class InversionReport:
                 "max": self.max_eigenvalue,
             },
             "positive_definite": self.positive_definite,
-            "methods": methods,
+            "method": self.method,
+            "success": self.success,
+            "max_abs_residual": self.max_abs_residual if self.success else None,
+            "error": None if self.success else self.error,
         }
 
 
 def _inversion_report(
     path: Path,
     fisher: xr.DataArray,
-    methods: Sequence[InversionMethod],
+    method: InversionMethod,
 ) -> InversionReport:
-    """Calculate matrix diagnostics and inversion residual summaries."""
+    """Calculate matrix diagnostics and an inversion residual summary."""
     matrix, parameters = _validate_matrix(fisher)
     values = matrix.values
     eigenvalues = np.linalg.eigvalsh(values)
-    results: list[MethodInversionReport] = []
-    identity = np.eye(len(parameters))
-    for method in methods:
-        try:
-            inverse = inv(matrix, method=method)
-        except np.linalg.LinAlgError as error:
-            results.append(MethodInversionReport(method, False, error=str(error)))
-            continue
-        residual = values @ inverse.values - identity
-        results.append(
-            MethodInversionReport(
-                method,
-                True,
-                max_abs_residual=_json_number(float(np.max(np.abs(residual)))),
-            )
+    try:
+        inverse = inv(matrix, method=method)
+    except np.linalg.LinAlgError as error:
+        result = InversionReport(
+            file=str(path),
+            matrix_size=len(parameters),
+            parameters=tuple(parameters),
+            condition_number=_json_number(float(np.linalg.cond(values))),
+            rank=int(np.linalg.matrix_rank(values)),
+            min_eigenvalue=_json_number(float(eigenvalues[0])),
+            max_eigenvalue=_json_number(float(eigenvalues[-1])),
+            positive_definite=bool(eigenvalues[0] > 0),
+            method=method,
+            success=False,
+            error=str(error),
         )
-    return InversionReport(
-        file=str(path),
-        matrix_size=len(parameters),
-        parameters=tuple(parameters),
-        condition_number=_json_number(float(np.linalg.cond(values))),
-        rank=int(np.linalg.matrix_rank(values)),
-        min_eigenvalue=_json_number(float(eigenvalues[0])),
-        max_eigenvalue=_json_number(float(eigenvalues[-1])),
-        positive_definite=bool(eigenvalues[0] > 0),
-        methods=tuple(results),
-    )
-
-
-def _methods(selected: Sequence[InversionMethodOption] | None) -> list[InversionMethod]:
-    """Return the requested methods, or every method in canonical order."""
-    options = selected if selected is not None else tuple(InversionMethodOption)
-    return [option.value for option in options]
+    else:
+        residual = values @ inverse.values - np.eye(len(parameters))
+        result = InversionReport(
+            file=str(path),
+            matrix_size=len(parameters),
+            parameters=tuple(parameters),
+            condition_number=_json_number(float(np.linalg.cond(values))),
+            rank=int(np.linalg.matrix_rank(values)),
+            min_eigenvalue=_json_number(float(eigenvalues[0])),
+            max_eigenvalue=_json_number(float(eigenvalues[-1])),
+            positive_definite=bool(eigenvalues[0] > 0),
+            method=method,
+            success=True,
+            max_abs_residual=_json_number(float(np.max(np.abs(residual)))),
+        )
+    return result
 
 
 def invert(
@@ -192,24 +168,20 @@ def invert(
         ),
     ],
     inversion_method: Annotated[
-        list[InversionMethodOption] | None,
+        InversionMethod,
         typer.Option(
             "--inversion-method",
-            show_default=False,
-            help=(
-                "Methods to evaluate (default: all methods). Repeat the option "
-                "to select multiple methods."
-            ),
+            help="Method used for the inversion report and --save.",
         ),
-    ] = None,
+    ] = "cholesky",
     save: Annotated[
         Path | None,
         typer.Option(
             "--save",
             metavar="PATH",
             help=(
-                "Write the Dataset with a new covariance to PATH, from the first "
-                "successful selected method in the order cholesky, inv, pinv."
+                "Write the Dataset with a new covariance to PATH, from the "
+                "selected method."
             ),
         ),
     ] = None,
@@ -222,13 +194,10 @@ def invert(
     try:
         dataset = load_dataset(file)
         fisher = _load_matrix(dataset)
-        methods = _methods(inversion_method)
-        inversion_report = _inversion_report(file, fisher, methods)
-        successful = [
-            result.method for result in inversion_report.methods if result.success
-        ]
+        inversion_report = _inversion_report(file, fisher, inversion_method)
+        successful = inversion_report.success
         saved = (
-            _save_covariance(save, dataset, fisher, successful)
+            _save_covariance(save, dataset, fisher, inversion_method)
             if save is not None and successful
             else None
         )
