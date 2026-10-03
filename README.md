@@ -157,7 +157,7 @@ NetCDF Datasets that contain `fisher` and `fiducials`:
 uv add 'fimx[cli,plotting]'
 fimx plot --file survey-a.nc --file survey-b.nc \
     --figure-file constraints.png --figure-dpi 200 \
-    --parameters a b --no-filled --backend getdist \
+    --parameters a --parameters b --no-filled --backend getdist \
     --backend-kwargs '{"contour_colors": ["C0", "C1"]}'
 ```
 
@@ -176,7 +176,8 @@ containing `fisher`; an existing `covariance` is ignored:
 
 ```sh
 fimx invert --file fisher.nc
-fimx invert --file forecast.nc --inversion-method inv pinv --json
+fimx invert --file forecast.nc --inversion-method inv \
+    --inversion-method pinv --json
 fimx invert --file forecast.nc --save forecast-with-covariance.nc
 ```
 

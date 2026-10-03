@@ -153,6 +153,7 @@ def test_save_respects_selected_methods(tmp_path: Path) -> None:
             str(path),
             "--inversion-method",
             "pinv",
+            "--inversion-method",
             "inv",
             "--save",
             str(out),
