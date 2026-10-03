@@ -10,7 +10,7 @@ import numpy as np
 import xarray as xr
 from numpy.typing import NDArray
 
-from ..construction import _labels, _plot_labels, _real_values, _validate_matrix
+from ..arrays import _labels, _plot_labels, _real_values, _validate_matrix
 from ..inversion import InversionMethod, inv
 
 if TYPE_CHECKING:

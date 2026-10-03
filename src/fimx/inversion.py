@@ -6,7 +6,7 @@ import numpy as np
 import xarray as xr
 from xarray_einstats import linalg
 
-from .construction import _symmetrize, _validate_matrix
+from .arrays import _symmetrize, _validate_matrix
 
 InversionMethod = Literal["cholesky", "inv", "pinv"]
 

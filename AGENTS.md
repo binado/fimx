@@ -1,9 +1,15 @@
 ## About the package
 
-`fimx` is a Python package providing eight functions to construct, manipulate,
-and analyze dense Fisher matrices represented as labeled `xarray.DataArray`
+`fimx` is a Python package providing functions to construct, manipulate, and
+analyze dense Fisher matrices represented as labeled `xarray.DataArray`
 objects. Matrices have fixed `("row", "col")` dimensions and matching ordered
 parameter coordinates. Storage and metadata are delegated to xarray.
+
+The `arrays` module constructs labeled arrays (`matrix`, `vector`,
+`gaussian_prior`) and owns the shared validation helpers. The `ops` module
+holds Fisher matrix operations (`combine`, `symmetrize`, `expand`, `fix`,
+`marginalize`, `transform`); `inversion` covers `inv` and `errors`. The public
+API is re-exported flat at the top level.
 
 ## Project management
 

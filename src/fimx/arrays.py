@@ -1,6 +1,6 @@
-"""Construction and shared validation of labeled dense arrays."""
+"""Construction of labeled dense arrays and shared validation."""
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 
 import numpy as np
 import xarray as xr
@@ -47,8 +47,8 @@ def _coordinate_labels(array: xr.DataArray, dimension: str) -> list[str]:
     return _labels(array.coords[dimension].values.tolist(), name=dimension)
 
 
-def _validate_matrix(F: xr.DataArray) -> tuple[xr.DataArray, list[str]]:
-    """Validate a canonical matrix without checking positive definiteness."""
+def _validate_shape(F: xr.DataArray) -> list[str]:
+    """Validate canonical dimensions and coordinates, ignoring symmetry."""
     if not isinstance(F, xr.DataArray):
         raise TypeError("Matrix inputs must be xarray.DataArray objects.")
     if F.dims != ("row", "col"):
@@ -58,6 +58,12 @@ def _validate_matrix(F: xr.DataArray) -> tuple[xr.DataArray, list[str]]:
     parameters = _coordinate_labels(F, "row")
     if parameters != _coordinate_labels(F, "col"):
         raise ValueError("Row and column parameter coordinates must match in order.")
+    return parameters
+
+
+def _validate_matrix(F: xr.DataArray) -> tuple[xr.DataArray, list[str]]:
+    """Validate a canonical matrix without checking positive definiteness."""
+    parameters = _validate_shape(F)
     values = _real_values(F.values)
     if not np.allclose(values, values.T, rtol=1e-10, atol=1e-12):
         raise ValueError("Matrices must be symmetric.")
@@ -155,3 +161,32 @@ def vector(values: ArrayLike, parameters: Sequence[str]) -> xr.DataArray:
             "Values must be one-dimensional and match the parameter count."
         )
     return _new_vector(array, labels)
+
+
+def gaussian_prior(sigmas: Mapping[str, float]) -> xr.DataArray:
+    """Construct independent Gaussian prior information from standard deviations.
+
+    Parameters
+    ----------
+    sigmas : mapping of str to float
+        Nonempty mapping of unique parameter names to finite, positive
+        standard deviations. Mapping order determines matrix order.
+
+    Returns
+    -------
+    xarray.DataArray
+        Fresh diagonal matrix with entries ``1 / sigma**2``.
+
+    Raises
+    ------
+    ValueError
+        If names or standard deviations are invalid, or information cannot
+        be represented as finite float64 values.
+    """
+    labels = _labels(list(sigmas), name="sigmas")
+    deviations = _real_values(list(sigmas.values()))
+    if np.any(deviations <= 0):
+        raise ValueError("Standard deviations must be positive.")
+    with np.errstate(over="ignore", divide="ignore", invalid="ignore"):
+        information = np.square(1 / deviations)
+    return _new_matrix(np.diag(information), labels)

@@ -1,19 +1,77 @@
-"""Parameter addition, removal and changes of variables."""
+"""Symmetrization, combination and parameter manipulation of Fisher matrices."""
 
+import operator
 from collections.abc import Sequence
+from functools import reduce
 
 import xarray as xr
 from xarray_einstats import linalg
 
-from .construction import (
+from .arrays import (
     _coordinate_labels,
     _labels,
     _new_matrix,
     _real_values,
     _symmetrize,
     _validate_matrix,
+    _validate_shape,
 )
 from .inversion import _solve
+
+__all__ = ["combine", "expand", "fix", "marginalize", "symmetrize", "transform"]
+
+
+def combine(*matrices: xr.DataArray) -> xr.DataArray:
+    """Add independent information over the union of parameter labels.
+
+    Parameters
+    ----------
+    *matrices : xarray.DataArray
+        One or more matrices satisfying the canonical matrix contract.
+
+    Returns
+    -------
+    xarray.DataArray
+        Fresh sum. Keep the first input order and append newly encountered
+        labels in subsequent input order; absent entries contribute zero.
+
+    Raises
+    ------
+    ValueError
+        If no matrices are supplied or any matrix is malformed.
+    """
+    if not matrices:
+        raise ValueError("At least one matrix is required.")
+    labels = [list(_validate_matrix(F)[1]) for F in matrices]
+    union = list(dict.fromkeys(label for group in labels for label in group))
+    total = reduce(operator.add, (expand(F, union) for F in matrices))
+    return _new_matrix(total.values, union)
+
+
+def symmetrize(F: xr.DataArray) -> xr.DataArray:
+    """Return the symmetric part of a labeled matrix as a fresh canonical matrix.
+
+    Parameters
+    ----------
+    F : xarray.DataArray
+        Square labeled matrix with dimensions ``('row', 'col')``, matching
+        ordered parameter coordinates and finite real values. Symmetry is
+        not required.
+
+    Returns
+    -------
+    xarray.DataArray
+        Fresh symmetric matrix ``(F + F.T) / 2`` over the same parameters.
+
+    Raises
+    ------
+    TypeError
+        If the input is not an xarray.DataArray.
+    ValueError
+        If dimensions, coordinates or values violate the matrix contract.
+    """
+    _validate_shape(F)
+    return _symmetrize(F)
 
 
 def _selection(
