@@ -7,9 +7,9 @@ from typing import Annotated, Any
 import typer
 import xarray as xr
 
+from ..inversion import InversionMethod
 from ..io import load_dataset
 from ..plotting import plot as plot_forecasts
-from .options import InversionMethodOption
 
 
 def _json_object(value: str) -> dict[str, Any]:
@@ -60,12 +60,12 @@ def plot(
         ),
     ] = True,
     method: Annotated[
-        InversionMethodOption,
+        InversionMethod,
         typer.Option(
             "--inversion-method",
             help="Fisher matrix inversion method.",
         ),
-    ] = InversionMethodOption.cholesky,
+    ] = "cholesky",
     backend: Annotated[
         str,
         typer.Option("--backend", metavar="NAME", help="Plotting backend."),
@@ -96,7 +96,7 @@ def plot(
         datasets,
         parameters=parameters,
         filled=filled,
-        method=method.value,
+        method=method,
         backend=backend,
         backend_kwargs=backend_kwargs,
     )
