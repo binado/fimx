@@ -1,10 +1,9 @@
 """Functions for Fisher information on labeled xarray matrices."""
 
-from .combination import combine, gaussian_prior
-from .construction import matrix, vector
+from .arrays import gaussian_prior, matrix, vector
 from .datasets import dataset
 from .inversion import errors, inv
-from .parameters import expand, fix, marginalize, transform
+from .ops import combine, expand, fix, marginalize, symmetrize, transform
 from .plotting import plot
 
 __all__ = [
@@ -18,6 +17,7 @@ __all__ = [
     "marginalize",
     "matrix",
     "plot",
+    "symmetrize",
     "transform",
     "vector",
 ]

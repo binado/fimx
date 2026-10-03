@@ -10,7 +10,7 @@ import numpy as np
 import typer
 import xarray as xr
 
-from ..construction import _validate_matrix
+from ..arrays import _validate_matrix
 from ..inversion import InversionMethod, inv
 from ..io import load_dataset, save_dataset
 

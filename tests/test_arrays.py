@@ -1,4 +1,4 @@
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 
 import numpy as np
 import pytest
@@ -11,6 +11,7 @@ from fimx import (
     errors,
     expand,
     fix,
+    gaussian_prior,
     inv,
     marginalize,
     matrix,
@@ -30,6 +31,7 @@ def test_public_api() -> None:
         "expand",
         "transform",
         "combine",
+        "symmetrize",
         "gaussian_prior",
         "dataset",
         "plot",
@@ -191,13 +193,28 @@ def test_matrix_inputs_must_be_dataarrays(
             operation(np.eye(2))
 
 
-def test_direct_dataarray_and_canonical_output(direct: xr.DataArray) -> None:
-    original = direct.copy(deep=True)
-    result = combine(direct)
-    assert result.dtype == np.float64
-    assert set(result.coords) == {"row", "col"}
-    assert result.attrs == {}
-    assert result.name is None
-    np.testing.assert_array_equal(result.values, direct.values)
-    result.values[0, 0] = 100
-    xr.testing.assert_identical(direct, original)
+def test_gaussian_prior() -> None:
+    result = gaussian_prior({"b": 0.5, "a": 2})
+    xr.testing.assert_equal(result, matrix([[4, 0], [0, 0.25]], ["b", "a"]))
+    F = matrix([[1, 0.5], [0.5, 1]], ["a", "b"])
+    np.testing.assert_allclose(combine(F, result).values, [[1.25, 0.5], [0.5, 5]])
+
+
+@pytest.mark.parametrize(
+    "sigmas",
+    [
+        {},
+        {"a": 0},
+        {"a": -1},
+        {"a": np.nan},
+        {"a": np.inf},
+        {"a": -np.inf},
+        {"a": 1j},
+        {"a": "1"},
+        {0: 1},
+        {"a": 1e-300},
+    ],
+)
+def test_invalid_prior(sigmas: Mapping[str, float]) -> None:
+    with pytest.raises(ValueError):
+        gaussian_prior(sigmas)

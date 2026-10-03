@@ -9,6 +9,9 @@ change before 1.0.
 
 ### Added
 
+- `symmetrize()` returning the symmetric part `(F + F.T) / 2` of a labeled
+  matrix as a fresh canonical matrix.
+- `fimx.ops` and `fimx.arrays` submodules for operations and construction.
 - `vector()` for constructing labeled one-dimensional parameter arrays.
 - `metadata` argument for `inv`, which records the method, condition number and
   inverse residual in the result's `attrs`.
@@ -22,6 +25,9 @@ change before 1.0.
 
 ### Changed
 
+- Internal reorganization: `construction` is renamed `arrays` and hosts
+  `gaussian_prior`; `combination` and `parameters` are merged into `ops`. The
+  flat top-level API is unchanged.
 - `fimx-plot` and `fimx-invert` are subcommands of one `fimx` command:
   `fimx plot` and `fimx invert`.
 - `fimx invert --inversion-method` takes one method (`cholesky` by default)

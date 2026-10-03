@@ -6,7 +6,7 @@ import numpy as np
 import xarray as xr
 from numpy.typing import ArrayLike
 
-from .construction import _validate_matrix, matrix, vector
+from .arrays import _validate_matrix, matrix, vector
 
 
 def dataset(

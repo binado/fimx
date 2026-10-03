@@ -7,7 +7,7 @@ import numpy as np
 import xarray as xr
 from numpy.typing import ArrayLike
 
-from .construction import _plot_labels, _real_values, _validate_matrix
+from .arrays import _plot_labels, _real_values, _validate_matrix
 from .datasets import dataset
 
 # Loose bound on |F @ C @ F - F| relative to max|F|. It is meant to catch a
