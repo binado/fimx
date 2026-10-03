@@ -6,12 +6,10 @@ from math import isfinite
 from pathlib import Path
 from typing import Annotated
 
-import numpy as np
 import typer
 import xarray as xr
 
-from ..arrays import _validate_matrix
-from ..inversion import InversionMethod, inv
+from ..inversion import InversionMethod, diagnose, inv
 from ..io import load_dataset, save_dataset
 
 
@@ -121,41 +119,25 @@ def _inversion_report(
     method: InversionMethod,
 ) -> InversionReport:
     """Calculate matrix diagnostics and an inversion residual summary."""
-    matrix, parameters = _validate_matrix(fisher)
-    values = matrix.values
-    eigenvalues = np.linalg.eigvalsh(values)
-    try:
-        inverse = inv(matrix, method=method)
-    except np.linalg.LinAlgError as error:
-        result = InversionReport(
-            file=str(path),
-            matrix_size=len(parameters),
-            parameters=tuple(parameters),
-            condition_number=_json_number(float(np.linalg.cond(values))),
-            rank=int(np.linalg.matrix_rank(values)),
-            min_eigenvalue=_json_number(float(eigenvalues[0])),
-            max_eigenvalue=_json_number(float(eigenvalues[-1])),
-            positive_definite=bool(eigenvalues[0] > 0),
-            method=method,
-            success=False,
-            error=str(error),
-        )
-    else:
-        residual = values @ inverse.values - np.eye(len(parameters))
-        result = InversionReport(
-            file=str(path),
-            matrix_size=len(parameters),
-            parameters=tuple(parameters),
-            condition_number=_json_number(float(np.linalg.cond(values))),
-            rank=int(np.linalg.matrix_rank(values)),
-            min_eigenvalue=_json_number(float(eigenvalues[0])),
-            max_eigenvalue=_json_number(float(eigenvalues[-1])),
-            positive_definite=bool(eigenvalues[0] > 0),
-            method=method,
-            success=True,
-            max_abs_residual=_json_number(float(np.max(np.abs(residual)))),
-        )
-    return result
+    diagnosis = diagnose(fisher, method=method)
+    eigenvalues = diagnosis["eigenvalues"].values
+    parameters = tuple(str(name) for name in diagnosis.parameter.values.tolist())
+    message = str(diagnosis["error"].item())
+    success = bool(diagnosis["success"].item())
+    return InversionReport(
+        file=str(path),
+        matrix_size=len(parameters),
+        parameters=parameters,
+        condition_number=_json_number(float(diagnosis["condition_number"].item())),
+        rank=int(diagnosis["rank"].item()),
+        min_eigenvalue=_json_number(float(eigenvalues[0])),
+        max_eigenvalue=_json_number(float(eigenvalues[-1])),
+        positive_definite=bool(diagnosis["positive_definite"].item()),
+        method=method,
+        success=success,
+        max_abs_residual=_json_number(float(diagnosis["residual"].item())),
+        error=None if success else message,
+    )
 
 
 def invert(

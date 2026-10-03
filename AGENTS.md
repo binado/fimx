@@ -8,8 +8,8 @@ parameter coordinates. Storage and metadata are delegated to xarray.
 The `arrays` module constructs labeled arrays (`matrix`, `vector`,
 `gaussian_prior`) and owns the shared validation helpers. The `ops` module
 holds Fisher matrix operations (`combine`, `symmetrize`, `expand`, `fix`,
-`marginalize`, `transform`); `inversion` covers `inv` and `errors`. The public
-API is re-exported flat at the top level.
+`marginalize`, `transform`, `correlation`, `fom`); `inversion` covers `inv`,
+`errors`, and `diagnose`. The public API is re-exported flat at the top level.
 
 ## Project management
 

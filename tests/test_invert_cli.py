@@ -86,6 +86,7 @@ def test_invert_method_failure_returns_nonzero(tmp_path: Path) -> None:
     assert report["method"] == "cholesky"
     assert report["success"] is False
     assert report["error"] is not None
+    assert report["condition_number"] is None
 
 
 def test_invert_unknown_method_exits(tmp_path: Path) -> None:

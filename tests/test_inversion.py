@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 import xarray as xr
 
-from fimx import errors, inv, matrix
+from fimx import diagnose, errors, inv, matrix
 
 METHODS = ["cholesky", "inv", "pinv"]
 
@@ -126,3 +126,57 @@ def test_metadata_condition_number_infinite_if_not_positive_definite(
     method = "inv" if values == [[1, 2], [2, 1]] else "pinv"
     covariance = inv(F, method=method, metadata=True)
     assert covariance.attrs["condition_number"] == np.inf
+
+
+def test_diagnose_matches_metadata(F: xr.DataArray) -> None:
+    diagnosis = diagnose(F)
+    covariance = inv(F, metadata=True)
+    assert diagnosis["method"].item() == covariance.attrs["method"]
+    assert bool(diagnosis["success"].item())
+    assert diagnosis["error"].item() == ""
+    assert float(diagnosis["condition_number"]) == pytest.approx(
+        covariance.attrs["condition_number"]
+    )
+    assert float(diagnosis["residual"]) == pytest.approx(covariance.attrs["residual"])
+    assert diagnosis.parameter.values.tolist() == ["a", "b", "c"]
+    assert diagnosis["eigenvalues"].dims == ("index",)
+    assert bool(diagnosis["positive_definite"].item())
+    assert int(diagnosis["rank"]) == 3
+    np.testing.assert_allclose(
+        diagnosis["eigenvalues"].values, np.linalg.eigvalsh(F.values)
+    )
+    assert set(diagnosis.data_vars) == {
+        "eigenvalues",
+        "condition_number",
+        "rank",
+        "positive_definite",
+        "residual",
+        "success",
+        "method",
+        "error",
+    }
+
+
+def test_diagnose_keeps_spectrum_when_cholesky_fails() -> None:
+    F = matrix([[1, 2], [2, 1]], ["a", "b"])
+    diagnosis = diagnose(F)
+    assert not bool(diagnosis["success"].item())
+    assert str(diagnosis["error"].item())
+    assert np.isnan(float(diagnosis["residual"]))
+    assert diagnosis["eigenvalues"].sizes["index"] == 2
+    assert not bool(diagnosis["positive_definite"].item())
+    assert diagnosis["condition_number"].item() == np.inf
+
+
+def test_diagnose_pinv_of_singular_matrix() -> None:
+    F = matrix([[1, 1], [1, 1]], ["a", "b"])
+    diagnosis = diagnose(F, method="pinv")
+    assert bool(diagnosis["success"].item())
+    assert int(diagnosis["rank"]) == 1
+    assert diagnosis["error"].item() == ""
+    assert np.isfinite(float(diagnosis["residual"]))
+
+
+def test_diagnose_unknown_method_raises(F: xr.DataArray) -> None:
+    with pytest.raises(ValueError, match="Unknown inversion method"):
+        diagnose(F, method="lu")  # ty: ignore[invalid-argument-type]

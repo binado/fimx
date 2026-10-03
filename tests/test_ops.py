@@ -6,9 +6,11 @@ import xarray as xr
 
 from fimx import (
     combine,
+    correlation,
     errors,
     expand,
     fix,
+    fom,
     inv,
     marginalize,
     matrix,
@@ -322,3 +324,60 @@ def test_invalid_jacobians(F: xr.DataArray, J: xr.DataArray, kind: str) -> None:
 def test_jacobian_must_be_dataarray(F: xr.DataArray) -> None:
     with pytest.raises(TypeError):
         transform(F, np.eye(3))  # ty: ignore[invalid-argument-type]
+
+
+def test_correlation_of_diagonal_matrix_is_identity() -> None:
+    F = matrix([[4, 0], [0, 1]], ["a", "b"])
+    original = F.copy(deep=True)
+    result = correlation(F)
+    expected = matrix(np.eye(2), ["a", "b"])
+    xr.testing.assert_identical(result, expected)
+    xr.testing.assert_identical(F, original)
+    result.values[0, 0] = 0
+    xr.testing.assert_identical(F, original)
+
+
+def test_correlation_matches_inverse() -> None:
+    F = matrix([[4, 1], [1, 2]], ["b", "a"])
+    covariance = inv(F)
+    sigma = np.sqrt(np.diag(covariance.values))
+    expected = covariance.values / np.outer(sigma, sigma)
+    result = correlation(F)
+    np.testing.assert_allclose(result.values, expected)
+    assert result.dims == ("row", "col")
+    assert result.row.values.tolist() == result.col.values.tolist() == ["b", "a"]
+    np.testing.assert_array_equal(np.diag(result.values), [1, 1])
+
+
+def test_correlation_rejects_zero_variance() -> None:
+    F = matrix([[1, 0], [0, 0]], ["a", "b"])
+    with pytest.raises(np.linalg.LinAlgError):
+        correlation(F, method="pinv")
+
+
+def test_fom_of_diagonal_matrix() -> None:
+    F = matrix([[4, 0], [0, 1]], ["a", "b"])
+    assert fom(F) == pytest.approx(2)
+
+
+def test_fom_matches_determinant_and_schur_complement() -> None:
+    F = matrix([[4, 1], [1, 2]], ["a", "b"])
+    assert fom(F) == pytest.approx(np.sqrt(7))
+    assert fom(F, "a") == pytest.approx(np.sqrt(3.5))
+    assert fom(F, ["b", "a"]) == pytest.approx(fom(F))
+
+
+def test_invalid_fom_selection() -> None:
+    F = matrix([[4, 1], [1, 2]], ["a", "b"])
+    with pytest.raises(KeyError):
+        fom(F, "z")
+    with pytest.raises(ValueError):
+        fom(F, ["a", "a"])
+    with pytest.raises(ValueError):
+        fom(F, [])
+
+
+def test_fom_requires_positive_definite_matrix() -> None:
+    F = matrix([[1, 2], [2, 1]], ["a", "b"])
+    with pytest.raises(np.linalg.LinAlgError):
+        fom(F)

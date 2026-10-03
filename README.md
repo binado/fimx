@@ -39,6 +39,9 @@ posterior = combine(F, prior)
 | `symmetrize(F)` | Return the symmetric part `(F + F.T) / 2` as a fresh canonical matrix. |
 | `inv(F, method="cholesky", metadata=False)` | Return the inverse; `method` is `cholesky`, `inv`, or `pinv`. With `metadata=True`, `attrs` hold `method`, `condition_number` and `residual`. |
 | `errors(F, method="cholesky")` | Return marginalized standard deviations. |
+| `correlation(F, method="cholesky")` | Return the correlation matrix `C_ij / (σ_i σ_j)`. |
+| `fom(F, parameters=None)` | Dark Energy Task Force figure of merit, `sqrt(det F)` after marginalizing every unnamed parameter. |
+| `diagnose(F, method="cholesky")` | Return a Dataset of eigenvalues, condition number, rank, positive definiteness, and the inversion residual. |
 | `transform(F, jacobian)` | Change variables using `J.T @ F @ J`. |
 | `combine(*matrices)` | Sum independent information over the parameter union. |
 | `gaussian_prior(sigmas)` | Construct diagonal information `1 / sigma**2`. |
@@ -52,8 +55,9 @@ posterior = combine(F, prior)
 - Vectors have dimension exactly `("row",)`, a nonempty shape, and explicit
   coordinates of unique string names. Values retain their input dtype.
 - Positive semidefiniteness is not checked, so singular matrices can be built,
-  fixed, transformed, or combined. `inv` and `errors` require positive
-  definite input; `marginalize` only requires the removed block to be.
+  fixed, transformed, or combined. `inv`, `errors`, `correlation`, and `fom`
+  require positive definite input; `marginalize` only requires the removed
+  block to be. `diagnose` reports a failed inversion instead of raising.
 - Functions return fresh DataArrays and never mutate their inputs. Attributes,
   names, and auxiliary coordinates are not preserved.
 - Arrays built directly with xarray work if they meet the contract.
@@ -70,6 +74,16 @@ Behavior worth knowing:
 - `combine` keeps the first matrix's order and appends new parameters as they
   appear. Missing entries contribute zero.
 - `gaussian_prior` takes **standard deviations**, not information values.
+- `fom` is `sqrt(det F_subset)`, the reciprocal square root of the
+  determinant of the marginalized covariance. `parameters` names the subset
+  that stays; every other name is marginalized. The determinant does not
+  depend on order.
+- `correlation` is undefined when a marginalized variance is zero, including
+  a null-space direction of `method="pinv"`.
+- `diagnose` always returns the spectrum. Eigenvalues use dimension `index`,
+  in ascending order, and `parameter` carries the matrix labels. On failure,
+  `success` is false, `error` holds the message, and `residual` is NaN.
+  `condition_number` is infinite unless the matrix is positive definite.
 - Failures are explicit: `ValueError` for malformed or non-finite data,
   `TypeError` for non-DataArray inputs, and `numpy.linalg.LinAlgError` for
   singular or indefinite matrices. By default `inv` and `errors` use Cholesky and
@@ -185,7 +199,9 @@ The report evaluates one inversion method, `cholesky` by default, selectable
 with `--inversion-method`. It reports the maximum absolute element of
 `F @ F_inv - I`, or the method's error if it cannot invert the matrix. The
 report also includes the condition number, numerical rank, eigenvalue range,
-and positive-definite status. `--save PATH` writes the Dataset, with its
+and positive-definite status. The condition number is infinite unless the
+matrix is positive definite, and that non-finite value is JSON `null`.
+`--save PATH` writes the Dataset, with its
 `fiducials` and `labels`, plus a new `covariance` from the selected method; the
 method is reported on stderr and recorded in the covariance's `attrs` together
 with its condition number and residual. Nothing is written if the selected

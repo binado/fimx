@@ -9,6 +9,11 @@ change before 1.0.
 
 ### Added
 
+- `correlation()` returning the correlation matrix of a Fisher matrix.
+- `fom()` returning the Dark Energy Task Force figure of merit,
+  `sqrt(det F)` after optional marginalization.
+- `diagnose()` returning an xarray Dataset with the eigenvalue spectrum,
+  condition number, rank, positive-definite status, and inversion residual.
 - `symmetrize()` returning the symmetric part `(F + F.T) / 2` of a labeled
   matrix as a fresh canonical matrix.
 - `fimx.ops` and `fimx.arrays` submodules for operations and construction.
@@ -25,6 +30,9 @@ change before 1.0.
 
 ### Changed
 
+- `fimx invert` takes its condition number from `diagnose`. The number is
+  infinite unless the matrix is positive definite, and the JSON report
+  encodes that non-finite value as `null`.
 - Internal reorganization: `construction` is renamed `arrays` and hosts
   `gaussian_prior`; `combination` and `parameters` are merged into `ops`. The
   flat top-level API is unchanged.

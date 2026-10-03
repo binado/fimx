@@ -1,4 +1,4 @@
-"""Matrix inversion and marginalized constraints."""
+"""Matrix inversion, diagnosis, and marginalized constraints."""
 
 from typing import Literal, get_args
 
@@ -22,15 +22,107 @@ def _solve(values: xr.DataArray, rhs: xr.DataArray) -> xr.DataArray:
     ).rename(rhs_col="col")
 
 
-def _diagnostics(values: xr.DataArray, inverse: xr.DataArray) -> dict[str, float]:
-    """Return the condition number of a matrix and the residual of its inverse."""
-    eigenvalues = np.linalg.eigvalsh(values.values)
+def _require_method(method: str) -> None:
+    """Raise ValueError when an inversion method is unknown."""
+    if method not in get_args(InversionMethod):
+        raise ValueError(
+            f"Unknown inversion method {method!r}. "
+            f"Available: {', '.join(get_args(InversionMethod))}."
+        )
+
+
+def _invert(
+    values: xr.DataArray, parameters: list[str], method: InversionMethod
+) -> xr.DataArray:
+    """Return a fresh symmetric inverse for an already validated matrix."""
+    if method == "cholesky":
+        rhs = xr.DataArray(
+            np.eye(len(parameters)),
+            dims=("row", "rhs_col"),
+            coords={"row": parameters, "rhs_col": parameters},
+        )
+        result = _solve(values, rhs)
+    elif method == "inv":
+        result = linalg.inv(values, dims=("row", "col"))
+    else:
+        result = linalg.pinv(values, dims=("row", "col"), hermitian=True)
+    return _symmetrize(result)
+
+
+def _spectrum(values: np.ndarray) -> tuple[np.ndarray, float, int, bool]:
+    """Return eigenvalues, condition number, rank, and positive definiteness."""
+    eigenvalues = np.linalg.eigvalsh(values)
     condition = (
         float(eigenvalues[-1] / eigenvalues[0]) if eigenvalues[0] > 0 else np.inf
     )
+    rank = int(np.linalg.matrix_rank(values))
+    return eigenvalues, condition, rank, bool(eigenvalues[0] > 0)
+
+
+def _residual(values: np.ndarray, inverse: np.ndarray) -> float:
+    """Return the maximum absolute residual of a computed inverse."""
     identity = np.eye(values.shape[0])
-    residual = float(np.max(np.abs(values.values @ inverse.values - identity)))
-    return {"condition_number": condition, "residual": residual}
+    return float(np.max(np.abs(values @ inverse - identity)))
+
+
+def diagnose(F: xr.DataArray, *, method: InversionMethod = "cholesky") -> xr.Dataset:
+    """Return numerical diagnostics for a Fisher matrix and one inversion.
+
+    Parameters
+    ----------
+    F : xarray.DataArray
+        Matrix satisfying the canonical matrix contract.
+    method : {'cholesky', 'inv', 'pinv'}
+        Inversion algorithm; see :func:`inv`.
+
+    Returns
+    -------
+    xarray.Dataset
+        Fresh diagnostics. ``eigenvalues`` lies on dimension ``index``, in
+        ascending order. Scalar variables are ``condition_number``, ``rank``,
+        ``positive_definite``, ``residual``, ``success``, ``method``, and
+        ``error``. The coordinate ``parameter`` carries the matrix labels and
+        is not a dimension of any variable.
+
+    Raises
+    ------
+    ValueError
+        If the matrix contract is violated or ``method`` is unknown.
+
+    Notes
+    -----
+    A failed inversion does not raise. ``success`` is false, ``error`` holds
+    the ``LinAlgError`` message, and ``residual`` is NaN; the spectrum is
+    still returned. ``condition_number`` is the ratio of the largest
+    eigenvalue to the smallest, or infinity unless the matrix is positive
+    definite.
+    """
+    _require_method(method)
+    values, parameters = _validate_matrix(F)
+    eigenvalues, condition, rank, positive_definite = _spectrum(values.values)
+    try:
+        inverse = _invert(values, parameters, method)
+    except np.linalg.LinAlgError as error:
+        residual = np.nan
+        success = False
+        message = str(error)
+    else:
+        residual = _residual(values.values, inverse.values)
+        success = True
+        message = ""
+    return xr.Dataset(
+        data_vars={
+            "eigenvalues": ("index", eigenvalues.astype(np.float64, copy=True)),
+            "condition_number": condition,
+            "rank": np.int64(rank),
+            "positive_definite": bool(positive_definite),
+            "residual": np.float64(residual),
+            "success": bool(success),
+            "method": method,
+            "error": message,
+        },
+        coords={"parameter": ("parameter", list(parameters))},
+    )
 
 
 def inv(
@@ -77,26 +169,16 @@ def inv(
     Like any xarray attributes, they describe this inversion only and are
     dropped by most subsequent operations.
     """
-    if method not in get_args(InversionMethod):
-        raise ValueError(
-            f"Unknown inversion method {method!r}. "
-            f"Available: {', '.join(get_args(InversionMethod))}."
-        )
+    _require_method(method)
     values, parameters = _validate_matrix(F)
-    if method == "cholesky":
-        rhs = xr.DataArray(
-            np.eye(len(parameters)),
-            dims=("row", "rhs_col"),
-            coords={"row": parameters, "rhs_col": parameters},
-        )
-        result = _solve(values, rhs)
-    elif method == "inv":
-        result = linalg.inv(values, dims=("row", "col"))
-    else:
-        result = linalg.pinv(values, dims=("row", "col"), hermitian=True)
-    covariance = _symmetrize(result)
+    covariance = _invert(values, parameters, method)
     if metadata:
-        covariance.attrs = {"method": method, **_diagnostics(values, covariance)}
+        _, condition, _, _ = _spectrum(values.values)
+        covariance.attrs = {
+            "method": method,
+            "condition_number": condition,
+            "residual": _residual(values.values, covariance.values),
+        }
     return covariance
 
 
