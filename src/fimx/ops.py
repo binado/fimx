@@ -259,22 +259,18 @@ def correlation(
         If the matrix contract is violated or ``method`` is unknown.
     """
     covariance = inv(F, method=method)
-    variance = np.diag(covariance.values)
-    if np.any(variance <= 0):
+    variance = linalg.diagonal(covariance, dims=("row", "col"))
+    if np.any(variance.values <= 0):
         raise np.linalg.LinAlgError("Correlation requires positive variances.")
-    sigma = np.sqrt(variance)
-    normalized = covariance.values / np.outer(sigma, sigma)
-    # sqrt(variance)**2 is not always the original variance.
-    np.fill_diagonal(normalized, 1.0)
-    labeled = xr.DataArray(
-        normalized,
-        dims=("row", "col"),
-        coords={
-            "row": covariance.coords["row"].values.copy(),
-            "col": covariance.coords["col"].values.copy(),
-        },
+    sigma = xr.DataArray(
+        np.sqrt(variance.values),
+        dims=("row",),
+        coords={"row": covariance.coords["row"].values.copy()},
     )
-    return _symmetrize(labeled)
+    normalized = covariance / sigma / sigma.rename(row="col")
+    # sqrt(variance)**2 is not always the original variance.
+    np.fill_diagonal(normalized.values, 1.0)
+    return _symmetrize(normalized)
 
 
 def fom(F: xr.DataArray, parameters: str | Sequence[str] | None = None) -> float:
