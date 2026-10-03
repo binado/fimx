@@ -264,6 +264,8 @@ def correlation(
         raise np.linalg.LinAlgError("Correlation requires positive variances.")
     sigma = np.sqrt(variance)
     normalized = covariance.values / np.outer(sigma, sigma)
+    # sqrt(variance)**2 is not always the original variance.
+    np.fill_diagonal(normalized, 1.0)
     labeled = xr.DataArray(
         normalized,
         dims=("row", "col"),
