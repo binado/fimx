@@ -197,8 +197,8 @@ def invert(
             "--inversion-method",
             show_default=False,
             help=(
-                "Methods to evaluate (default: all methods). "
-                "List several methods or repeat the option."
+                "Methods to evaluate (default: all methods). Repeat the option "
+                "to select multiple methods."
             ),
         ),
     ] = None,

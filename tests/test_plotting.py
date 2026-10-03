@@ -223,7 +223,14 @@ def test_cli_inversion_method_pinv_saves_degenerate_figure(
     degenerate_forecast.to_netcdf(source)
     figure_file = tmp_path / "out.png"
     argv = ["plot", "--file", str(source), "--figure-file", str(figure_file)]
-    argv += ["--parameters", "a", "--inversion-method", "pinv"]
+    argv += [
+        "--parameters",
+        "a",
+        "--parameters",
+        "b",
+        "--inversion-method",
+        "pinv",
+    ]
     result = runner.invoke(app, argv)
     assert result.exit_code == 0
     assert figure_file.exists()
