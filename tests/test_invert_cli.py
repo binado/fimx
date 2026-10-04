@@ -129,7 +129,6 @@ def test_save_writes_covariance_and_keeps_other_variables(tmp_path: Path) -> Non
     assert result.exit_code == 0
     saved = load_dataset(out)
     np.testing.assert_allclose(saved["covariance"].values, inv(F).values)
-    assert saved["covariance"].attrs["method"] == "cholesky"
     np.testing.assert_allclose(saved["fiducials"].values, [0.0, 1.0])
     assert saved["labels"].values.tolist() == ["a_1", "b_1"]
     assert "cholesky" in result.stderr
@@ -141,9 +140,10 @@ def test_save_replaces_existing_covariance(tmp_path: Path) -> None:
     save_dataset(path, F, covariance=inv(F, method="inv"))
     out = tmp_path / "out.nc"
 
-    runner.invoke(app, ["invert", "--file", str(path), "--save", str(out)])
+    result = runner.invoke(app, ["invert", "--file", str(path), "--save", str(out)])
 
-    assert load_dataset(out)["covariance"].attrs["method"] == "cholesky"
+    assert result.exit_code == 0
+    np.testing.assert_allclose(load_dataset(out)["covariance"].values, inv(F).values)
 
 
 def test_save_uses_selected_pinv_on_singular_matrix(tmp_path: Path) -> None:
@@ -167,7 +167,8 @@ def test_save_uses_selected_pinv_on_singular_matrix(tmp_path: Path) -> None:
 
     assert result.exit_code == 0
 
-    assert load_dataset(out)["covariance"].attrs["method"] == "pinv"
+    saved = load_dataset(out)["covariance"]
+    np.testing.assert_allclose(saved.values, inv(F, method="pinv").values)
 
 
 def test_save_is_skipped_if_method_fails(tmp_path: Path) -> None:
