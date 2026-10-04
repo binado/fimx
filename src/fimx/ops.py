@@ -3,6 +3,7 @@
 import operator
 from collections.abc import Sequence
 from functools import reduce
+from typing import cast
 
 import numpy as np
 import xarray as xr
@@ -17,7 +18,14 @@ from .arrays import (
     _validate_matrix,
     _validate_shape,
 )
-from .inversion import InversionMethod, _solve, inv
+from .inversion import (
+    InversionMethod,
+    _eigenvalues,
+    _invert,
+    _positive_semidefinite,
+    _require_method,
+    _solve,
+)
 
 __all__ = [
     "combine",
@@ -242,6 +250,8 @@ def correlation(
         Matrix satisfying the canonical matrix contract.
     method : {'cholesky', 'inv', 'pinv'}
         Inversion algorithm used to obtain the covariance; see :func:`inv`.
+        ``'pinv'`` supports singular positive semidefinite matrices when all
+        covariance diagonal entries are positive.
 
     Returns
     -------
@@ -252,25 +262,35 @@ def correlation(
     Raises
     ------
     numpy.linalg.LinAlgError
-        If inversion fails, or a covariance diagonal entry is not positive.
-        ``method='pinv'`` hits the latter for an unconstrained direction,
-        whose variance is zero.
+        If inversion fails, the input or covariance is not positive
+        semidefinite within numerical roundoff, or a covariance diagonal entry
+        is not positive. A zero variance can occur with ``method='pinv'``.
     ValueError
         If the matrix contract is violated or ``method`` is unknown.
+
+    Notes
+    -----
+    Semidefiniteness uses the scale-relative eigenvalue roundoff allowance
+    described in :func:`diagnose`, without modifying the spectrum. Singular
+    pseudoinverse correlations describe normalized pseudoinverse entries,
+    not unconstrained uncertainties.
     """
-    covariance = inv(F, method=method)
+    _require_method(method)
+    values, parameters = _validate_matrix(F)
+    if not _positive_semidefinite(_eigenvalues(values)):
+        raise np.linalg.LinAlgError("Correlation requires positive semidefinite input.")
+    covariance = _invert(values, parameters, method)
+    if not _positive_semidefinite(_eigenvalues(covariance)):
+        raise np.linalg.LinAlgError(
+            "Correlation requires a positive semidefinite covariance."
+        )
     variance = linalg.diagonal(covariance, dims=("row", "col"))
-    if np.any(variance.values <= 0):
+    if not bool((variance > 0).all().item()):
         raise np.linalg.LinAlgError("Correlation requires positive variances.")
-    sigma = xr.DataArray(
-        np.sqrt(variance.values),
-        dims=("row",),
-        coords={"row": covariance.coords["row"].values.copy()},
-    )
+    sigma = cast(xr.DataArray, np.sqrt(variance))
     normalized = covariance / sigma / sigma.rename(row="col")
-    # sqrt(variance)**2 is not always the original variance.
-    np.fill_diagonal(normalized.values, 1.0)
-    return _symmetrize(normalized)
+    normalized = xr.where(covariance.row == covariance.col, 1.0, normalized)
+    return _symmetrize(normalized.transpose("row", "col"))
 
 
 def fom(F: xr.DataArray, parameters: str | Sequence[str] | None = None) -> float:
@@ -298,14 +318,15 @@ def fom(F: xr.DataArray, parameters: str | Sequence[str] | None = None) -> float
         If input is malformed, or the selection is empty, duplicated, or not
         made of strings.
     numpy.linalg.LinAlgError
-        If the matrix, or the block removed by marginalization, is not
+        If the selected marginalized matrix, or the removed block, is not
         positive definite.
 
     Notes
     -----
-    The determinant does not depend on parameter order. Passing every
-    parameter keeps the original matrix, because :func:`marginalize` refuses
-    to remove all of them.
+    The figure of merit is computed from the Cholesky diagonal without
+    forming the determinant. The determinant does not depend on parameter
+    order. Passing every parameter keeps the original matrix, because
+    :func:`marginalize` refuses to remove all of them.
     """
     matrix, labels = _validate_matrix(F)
     if parameters is not None:
@@ -313,12 +334,9 @@ def fom(F: xr.DataArray, parameters: str | Sequence[str] | None = None) -> float
         complement = [name for name in labels if name not in set(selected)]
         if complement:
             matrix = marginalize(matrix, complement)
-    sign, logdet = np.linalg.slogdet(matrix.values)
-    if sign != 1.0:
-        raise np.linalg.LinAlgError(
-            "Figure of merit requires a positive definite matrix."
-        )
-    return float(np.exp(0.5 * logdet))
+    factor = linalg.cholesky(matrix, dims=("row", "col"))
+    diagonal = linalg.diagonal(factor, dims=("row", "col"))
+    return float(np.exp(np.log(diagonal).sum()).item())
 
 
 def transform(F: xr.DataArray, jacobian: xr.DataArray) -> xr.DataArray:

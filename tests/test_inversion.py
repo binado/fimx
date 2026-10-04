@@ -150,6 +150,7 @@ def test_diagnose_matches_metadata(F: xr.DataArray) -> None:
         "condition_number",
         "rank",
         "positive_definite",
+        "positive_semidefinite",
         "residual",
         "success",
         "method",
@@ -180,3 +181,44 @@ def test_diagnose_pinv_of_singular_matrix() -> None:
 def test_diagnose_unknown_method_raises(F: xr.DataArray) -> None:
     with pytest.raises(ValueError, match="Unknown inversion method"):
         diagnose(F, method="lu")  # ty: ignore[invalid-argument-type]
+
+
+@pytest.mark.parametrize(
+    ("diagonal", "positive_definite", "positive_semidefinite", "rank"),
+    [
+        ([1.0, 2.0], True, True, 2),
+        ([0.0, 1.0], False, True, 1),
+        ([0.0, 0.0], False, True, 0),
+        ([-1.0, 2.0], False, False, 2),
+        ([-np.finfo(np.float64).eps, 1.0], False, True, 1),
+        ([-1e-12, 1.0], False, False, 2),
+        ([-1.0, -2.0], False, False, 2),
+    ],
+)
+@pytest.mark.parametrize("scale", [1e-100, 1.0, 1e100])
+def test_diagnose_definiteness_is_scale_relative(
+    diagonal: list[float],
+    positive_definite: bool,
+    positive_semidefinite: bool,
+    rank: int,
+    scale: float,
+) -> None:
+    F = matrix(np.diag(diagonal) * scale, ["z", "a"])
+    original = F.copy(deep=True)
+    diagnosis = diagnose(F, method="pinv")
+    assert diagnosis.positive_definite.item() is positive_definite
+    assert diagnosis.positive_semidefinite.item() is positive_semidefinite
+    assert diagnosis.positive_semidefinite.dims == ()
+    assert diagnosis.positive_semidefinite.dtype == np.bool_
+    assert diagnosis.success.item() is True
+    assert diagnosis["rank"].item() == rank
+    assert diagnosis.eigenvalues.dims == ("index",)
+    assert set(diagnosis.coords) == {"parameter"}
+    assert diagnosis.parameter.values.tolist() == ["z", "a"]
+    np.testing.assert_allclose(diagnosis.eigenvalues.values / scale, sorted(diagonal))
+    if positive_definite:
+        assert diagnosis.condition_number.item() == pytest.approx(2)
+    else:
+        assert diagnosis.condition_number.item() == np.inf
+    diagnosis.eigenvalues.values[0] = 99
+    xr.testing.assert_identical(F, original)

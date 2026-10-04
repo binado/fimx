@@ -13,7 +13,8 @@ change before 1.0.
 - `fom()` returning the Dark Energy Task Force figure of merit,
   `sqrt(det F)` after optional marginalization.
 - `diagnose()` returning an xarray Dataset with the eigenvalue spectrum,
-  condition number, rank, positive-definite status, and inversion residual.
+  condition number, rank, positive-definite and positive-semidefinite status,
+  and inversion residual.
 - `symmetrize()` returning the symmetric part `(F + F.T) / 2` of a labeled
   matrix as a fresh canonical matrix.
 - `fimx.ops` and `fimx.arrays` submodules for operations and construction.
@@ -30,6 +31,12 @@ change before 1.0.
 
 ### Changed
 
+- `fom()` validates positive definiteness using Cholesky and computes the
+  result from its diagonal without forming the determinant.
+- `correlation()` rejects indefinite input and covariance using the same
+  scale-relative eigenvalue tolerance as `diagnose()`. Singular positive
+  semidefinite input remains supported with `method="pinv"` when every
+  covariance diagonal entry is positive.
 - `fimx invert` takes its condition number from `diagnose`. The number is
   infinite unless the matrix is positive definite, and the JSON report
   encodes that non-finite value as `null`.

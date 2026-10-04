@@ -49,14 +49,36 @@ def _invert(
     return _symmetrize(result)
 
 
-def _spectrum(values: np.ndarray) -> tuple[np.ndarray, float, int, bool]:
-    """Return eigenvalues, condition number, rank, and positive definiteness."""
-    eigenvalues = np.linalg.eigvalsh(values)
-    condition = (
-        float(eigenvalues[-1] / eigenvalues[0]) if eigenvalues[0] > 0 else np.inf
+def _eigenvalues(values: xr.DataArray) -> xr.DataArray:
+    """Return ordered spectral values without parameter coordinates."""
+    return (
+        linalg.eigvalsh(values, dims=("row", "col"))
+        .drop_vars("col")
+        .rename(col="index")
     )
-    rank = int(np.linalg.matrix_rank(values))
-    return eigenvalues, condition, rank, bool(eigenvalues[0] > 0)
+
+
+def _positive_semidefinite(eigenvalues: xr.DataArray) -> bool:
+    """Classify a spectrum with a scale-relative roundoff allowance."""
+    tolerance = (
+        eigenvalues.sizes["index"] * np.finfo(np.float64).eps * abs(eigenvalues).max()
+    )
+    return bool((eigenvalues.min() >= -tolerance).item())
+
+
+def _spectrum(values: xr.DataArray) -> tuple[xr.DataArray, float, int, bool, bool]:
+    """Return the labeled spectrum, condition, rank, and definiteness flags."""
+    eigenvalues = _eigenvalues(values)
+    minimum = float(eigenvalues.min().item())
+    condition = float(eigenvalues.max().item() / minimum) if minimum > 0 else np.inf
+    rank = int(linalg.matrix_rank(values, dims=("row", "col")).item())
+    return (
+        eigenvalues,
+        condition,
+        rank,
+        minimum > 0,
+        _positive_semidefinite(eigenvalues),
+    )
 
 
 def _residual(values: np.ndarray, inverse: np.ndarray) -> float:
@@ -80,8 +102,8 @@ def diagnose(F: xr.DataArray, *, method: InversionMethod = "cholesky") -> xr.Dat
     xarray.Dataset
         Fresh diagnostics. ``eigenvalues`` lies on dimension ``index``, in
         ascending order. Scalar variables are ``condition_number``, ``rank``,
-        ``positive_definite``, ``residual``, ``success``, ``method``, and
-        ``error``. The coordinate ``parameter`` carries the matrix labels and
+        ``positive_definite``, ``positive_semidefinite``, ``residual``,
+        ``success``, ``method``, and ``error``. The coordinate ``parameter`` carries the matrix labels and
         is not a dimension of any variable.
 
     Raises
@@ -95,11 +117,16 @@ def diagnose(F: xr.DataArray, *, method: InversionMethod = "cholesky") -> xr.Dat
     the ``LinAlgError`` message, and ``residual`` is NaN; the spectrum is
     still returned. ``condition_number`` is the ratio of the largest
     eigenvalue to the smallest, or infinity unless the matrix is positive
-    definite.
+    definite. ``positive_semidefinite`` permits negative eigenvalues within
+    ``n * eps * max(abs(eigenvalues))``, where ``eps`` is float64 machine
+    precision. ``positive_definite`` requires strictly positive eigenvalues;
+    ``success`` describes inversion independently of these flags.
     """
     _require_method(method)
     values, parameters = _validate_matrix(F)
-    eigenvalues, condition, rank, positive_definite = _spectrum(values.values)
+    eigenvalues, condition, rank, positive_definite, positive_semidefinite = _spectrum(
+        values
+    )
     try:
         inverse = _invert(values, parameters, method)
     except np.linalg.LinAlgError as error:
@@ -112,10 +139,11 @@ def diagnose(F: xr.DataArray, *, method: InversionMethod = "cholesky") -> xr.Dat
         message = ""
     return xr.Dataset(
         data_vars={
-            "eigenvalues": ("index", eigenvalues.astype(np.float64, copy=True)),
+            "eigenvalues": eigenvalues.copy(deep=True),
             "condition_number": condition,
             "rank": np.int64(rank),
             "positive_definite": bool(positive_definite),
+            "positive_semidefinite": bool(positive_semidefinite),
             "residual": np.float64(residual),
             "success": bool(success),
             "method": method,
@@ -173,7 +201,7 @@ def inv(
     values, parameters = _validate_matrix(F)
     covariance = _invert(values, parameters, method)
     if metadata:
-        _, condition, _, _ = _spectrum(values.values)
+        _, condition, _, _, _ = _spectrum(values)
         covariance.attrs = {
             "method": method,
             "condition_number": condition,
