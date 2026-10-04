@@ -37,11 +37,10 @@ posterior = combine(F, prior)
 | `fix(F, parameters)` | Remove names through a principal submatrix. |
 | `marginalize(F, parameters)` | Remove names through the Schur complement. |
 | `symmetrize(F)` | Return the symmetric part `(F + F.T) / 2` as a fresh canonical matrix. |
-| `inv(F, method="cholesky", metadata=False)` | Return the inverse; `method` is `cholesky`, `inv`, or `pinv`. With `metadata=True`, `attrs` hold `method`, `condition_number` and `residual`. |
+| `inv(F, method="cholesky", metadata=False, return_diagnostics=False)` | Return the inverse; `method` is `cholesky`, `inv`, or `pinv`. With `return_diagnostics=True`, return `(covariance, diagnostics)`. With `metadata=True`, `attrs` hold `method`, `condition_number` and `residual`. |
 | `errors(F, method="cholesky")` | Return marginalized standard deviations. |
-| `correlation(F, method="cholesky")` | Return the correlation matrix `C_ij / (σ_i σ_j)`. |
+| `correlation(F, method="cholesky", return_diagnostics=False)` | Return the correlation matrix `C_ij / (σ_i σ_j)`, or `(correlation, diagnostics)` with `return_diagnostics=True`. |
 | `fom(F, parameters=None)` | Dark Energy Task Force figure of merit, `sqrt(det F)` after marginalizing every unnamed parameter. |
-| `diagnose(F, method="cholesky")` | Return a Dataset of eigenvalues, condition number, rank, positive definiteness and semidefiniteness, and the inversion residual. |
 | `transform(F, jacobian)` | Change variables using `J.T @ F @ J`. |
 | `combine(*matrices)` | Sum independent information over the parameter union. |
 | `gaussian_prior(sigmas)` | Construct diagonal information `1 / sigma**2`. |
@@ -60,8 +59,7 @@ posterior = combine(F, prior)
   method. `correlation` requires positive semidefinite input and covariance,
   with strictly positive covariance diagonals. `fom` requires a positive
   definite selected marginalized matrix; `marginalize` requires only the
-  removed block to be positive definite. `diagnose` reports a failed
-  inversion instead of raising.
+  removed block to be positive definite.
 - Functions return fresh DataArrays and never mutate their inputs. Attributes,
   names, and auxiliary coordinates are not preserved.
 - Arrays built directly with xarray work if they meet the contract.
@@ -88,16 +86,18 @@ Behavior worth knowing:
   the normalized pseudoinverse, whose null-space directions have zero variance;
   it does not restore unconstrained uncertainties. Correlation is undefined
   when any covariance diagonal entry is zero.
-- `diagnose` always returns the spectrum. Eigenvalues use dimension `index`,
-  in ascending order, and `parameter` carries the matrix labels. On failure,
-  `success` is false, `error` holds the message, and `residual` is NaN.
-  `condition_number` is infinite unless the matrix is positive definite.
+- `inv(F, return_diagnostics=True)` returns `(covariance, diagnostics)`;
+  `correlation(F, return_diagnostics=True)` returns `(correlation, diagnostics)`.
+  Diagnostics are an xarray Dataset describing the input Fisher matrix and
+  its computed inverse, before correlation normalization. Eigenvalues use
+  dimension `index`, in ascending order, and `parameter` carries the matrix
+  labels. `condition_number` is infinite unless the matrix is positive definite.
   `positive_definite` requires strictly positive eigenvalues;
   `positive_semidefinite` allows negative eigenvalues within
   `n * eps * max(abs(eigenvalues))`, with float64 machine precision `eps` and
   matrix size `n`. Correlation uses the same scale-relative allowance.
-  No eigenvalues are modified, and `success` reports inversion success
-  independently of either definiteness flag.
+  The Dataset also contains `rank`, `method`, and `residual` (`max|F @ C - I|`).
+  `success` is true and `error` is empty; failures raise in either return mode.
 - Failures are explicit: `ValueError` for malformed or non-finite data,
   `TypeError` for non-DataArray inputs, and `numpy.linalg.LinAlgError` for
   singular or indefinite matrices. By default `inv` and `errors` use Cholesky and

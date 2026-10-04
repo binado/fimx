@@ -34,7 +34,6 @@ def test_public_api() -> None:
         "correlation",
         "symmetrize",
         "fom",
-        "diagnose",
         "gaussian_prior",
         "dataset",
         "plot",

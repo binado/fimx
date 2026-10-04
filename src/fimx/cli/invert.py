@@ -6,10 +6,12 @@ from math import isfinite
 from pathlib import Path
 from typing import Annotated
 
+import numpy as np
 import typer
 import xarray as xr
 
-from ..inversion import InversionMethod, diagnose, inv
+from ..arrays import _validate_matrix
+from ..inversion import InversionMethod, _diagnostics, inv
 from ..io import load_dataset, save_dataset
 
 
@@ -26,8 +28,8 @@ def _save_covariance(
     path: Path,
     dataset: xr.Dataset,
     fisher: xr.DataArray,
-    method: InversionMethod,
-) -> InversionMethod:
+    covariance: xr.DataArray,
+) -> None:
     """Save the Dataset with a covariance from the selected method.
 
     Any covariance already in the Dataset is ignored and replaced.
@@ -37,11 +39,10 @@ def _save_covariance(
     save_dataset(
         path,
         fisher,
-        covariance=inv(fisher, method=method, metadata=True),
+        covariance=covariance,
         fiducials=fiducials,
         labels=labels,
     )
-    return method
 
 
 def _json_number(value: float) -> float | None:
@@ -117,14 +118,21 @@ def _inversion_report(
     path: Path,
     fisher: xr.DataArray,
     method: InversionMethod,
-) -> InversionReport:
-    """Calculate matrix diagnostics and an inversion residual summary."""
-    diagnosis = diagnose(fisher, method=method)
+) -> tuple[InversionReport, xr.DataArray | None]:
+    """Calculate an inversion once and retain its covariance for saving."""
+    try:
+        covariance, diagnosis = inv(
+            fisher, method=method, metadata=True, return_diagnostics=True
+        )
+    except np.linalg.LinAlgError as error:
+        covariance = None
+        values, parameters = _validate_matrix(fisher)
+        diagnosis = _diagnostics(values, parameters, method, None, str(error))
     eigenvalues = diagnosis["eigenvalues"].values
     parameters = tuple(str(name) for name in diagnosis.parameter.values.tolist())
     message = str(diagnosis["error"].item())
     success = bool(diagnosis["success"].item())
-    return InversionReport(
+    report = InversionReport(
         file=str(path),
         matrix_size=len(parameters),
         parameters=parameters,
@@ -138,6 +146,7 @@ def _inversion_report(
         max_abs_residual=_json_number(float(diagnosis["residual"].item())),
         error=None if success else message,
     )
+    return report, covariance
 
 
 def invert(
@@ -176,13 +185,11 @@ def invert(
     try:
         dataset = load_dataset(file)
         fisher = _load_matrix(dataset)
-        inversion_report = _inversion_report(file, fisher, inversion_method)
+        inversion_report, covariance = _inversion_report(file, fisher, inversion_method)
         successful = inversion_report.success
-        saved = (
-            _save_covariance(save, dataset, fisher, inversion_method)
-            if save is not None and successful
-            else None
-        )
+        saved = save is not None and covariance is not None
+        if save is not None and covariance is not None:
+            _save_covariance(save, dataset, fisher, covariance)
     except (OSError, ValueError) as error:
         typer.echo(f"Error: {error}", err=True)
         raise typer.Exit(2) from error
@@ -191,7 +198,7 @@ def invert(
         typer.echo(json.dumps(inversion_report.asdict(), allow_nan=False))
     else:
         typer.echo(inversion_report)
-    if saved is not None:
-        typer.echo(f"Saved {saved} covariance to {save}", err=True)
+    if saved:
+        typer.echo(f"Saved {inversion_method} covariance to {save}", err=True)
     if not successful:
         raise typer.Exit(1)

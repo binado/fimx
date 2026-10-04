@@ -453,3 +453,33 @@ def test_correlation_validates_method_before_definiteness() -> None:
     F = matrix([[-1, 2], [2, -1]], ["b", "a"])
     with pytest.raises(ValueError, match="Unknown inversion method"):
         correlation(F, method="lu")  # ty: ignore[invalid-argument-type]
+
+
+@pytest.mark.parametrize("method", ["cholesky", "inv", "pinv"])
+def test_correlation_returns_inversion_diagnostics(
+    F: xr.DataArray, method: str
+) -> None:
+    result, diagnostics = correlation(F, method=method, return_diagnostics=True)  # ty: ignore[no-matching-overload]
+    _, expected = inv(F, method=method, return_diagnostics=True)  # ty: ignore[no-matching-overload]
+    xr.testing.assert_identical(result, correlation(F, method=method))  # ty: ignore[invalid-argument-type]
+    xr.testing.assert_identical(diagnostics, expected)
+
+
+def test_correlation_pinv_returns_singular_diagnostics() -> None:
+    F = matrix([[1, 1], [1, 1]], ["z", "a"])
+    result, diagnostics = correlation(F, method="pinv", return_diagnostics=True)
+    np.testing.assert_allclose(result.values, np.ones((2, 2)))
+    assert diagnostics["rank"].item() == 1
+    assert diagnostics.condition_number.item() == np.inf
+    assert diagnostics.parameter.values.tolist() == ["z", "a"]
+    assert diagnostics.residual.item() == pytest.approx(0.5)
+
+
+@pytest.mark.parametrize("method", ["cholesky", "inv", "pinv"])
+@pytest.mark.parametrize("values", [[[1, 2], [2, 1]], [[4, 0], [0, 0]]])
+def test_correlation_diagnostics_preserve_failures(
+    method: str, values: list[list[float]]
+) -> None:
+    F = matrix(values, ["a", "b"])
+    with pytest.raises(np.linalg.LinAlgError):
+        correlation(F, method=method, return_diagnostics=True)  # ty: ignore[no-matching-overload]

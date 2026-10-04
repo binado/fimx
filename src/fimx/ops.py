@@ -3,7 +3,7 @@
 import operator
 from collections.abc import Sequence
 from functools import reduce
-from typing import cast
+from typing import Literal, cast, overload
 
 import numpy as np
 import xarray as xr
@@ -20,6 +20,7 @@ from .arrays import (
 )
 from .inversion import (
     InversionMethod,
+    _diagnostics,
     _eigenvalues,
     _invert,
     _positive_semidefinite,
@@ -239,9 +240,39 @@ def _kept(labels: list[str], parameters: str | Sequence[str]) -> list[str]:
     return selected
 
 
+@overload
 def correlation(
-    F: xr.DataArray, *, method: InversionMethod = "cholesky"
-) -> xr.DataArray:
+    F: xr.DataArray,
+    *,
+    method: InversionMethod = "cholesky",
+    return_diagnostics: Literal[False] = False,
+) -> xr.DataArray: ...
+
+
+@overload
+def correlation(
+    F: xr.DataArray,
+    *,
+    method: InversionMethod = "cholesky",
+    return_diagnostics: Literal[True],
+) -> tuple[xr.DataArray, xr.Dataset]: ...
+
+
+@overload
+def correlation(
+    F: xr.DataArray,
+    *,
+    method: InversionMethod = "cholesky",
+    return_diagnostics: bool,
+) -> xr.DataArray | tuple[xr.DataArray, xr.Dataset]: ...
+
+
+def correlation(
+    F: xr.DataArray,
+    *,
+    method: InversionMethod = "cholesky",
+    return_diagnostics: bool = False,
+) -> xr.DataArray | tuple[xr.DataArray, xr.Dataset]:
     """Return the correlation matrix of a Fisher matrix.
 
     Parameters
@@ -252,12 +283,18 @@ def correlation(
         Inversion algorithm used to obtain the covariance; see :func:`inv`.
         ``'pinv'`` supports singular positive semidefinite matrices when all
         covariance diagonal entries are positive.
+    return_diagnostics : bool
+        If true, return ``(correlation, diagnostics)``. Diagnostics describe
+        the input Fisher matrix and its covariance inversion; see :func:`inv`.
 
     Returns
     -------
     xarray.DataArray
         Fresh canonical matrix ``C_ij / (sigma_i sigma_j)``, with ones on
-        the diagonal.
+        the diagonal, when ``return_diagnostics=False`` (default).
+    tuple of (xarray.DataArray, xarray.Dataset)
+        Correlation and inversion diagnostics when ``return_diagnostics=True``.
+        The residual refers to the covariance before normalization.
 
     Raises
     ------
@@ -271,7 +308,7 @@ def correlation(
     Notes
     -----
     Semidefiniteness uses the scale-relative eigenvalue roundoff allowance
-    described in :func:`diagnose`, without modifying the spectrum. Singular
+    described in :func:`inv`, without modifying the spectrum. Singular
     pseudoinverse correlations describe normalized pseudoinverse entries,
     not unconstrained uncertainties.
     """
@@ -290,7 +327,10 @@ def correlation(
     sigma = cast(xr.DataArray, np.sqrt(variance))
     normalized = covariance / sigma / sigma.rename(row="col")
     normalized = xr.where(covariance.row == covariance.col, 1.0, normalized)
-    return _symmetrize(normalized.transpose("row", "col"))
+    result = _symmetrize(normalized.transpose("row", "col"))
+    if return_diagnostics:
+        return result, _diagnostics(values, parameters, method, covariance)
+    return result
 
 
 def fom(F: xr.DataArray, parameters: str | Sequence[str] | None = None) -> float:

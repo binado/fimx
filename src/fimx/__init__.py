@@ -2,7 +2,7 @@
 
 from .arrays import gaussian_prior, matrix, vector
 from .datasets import dataset
-from .inversion import diagnose, errors, inv
+from .inversion import errors, inv
 from .ops import (
     combine,
     correlation,
@@ -19,7 +19,6 @@ __all__ = [
     "combine",
     "correlation",
     "dataset",
-    "diagnose",
     "errors",
     "expand",
     "fix",

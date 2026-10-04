@@ -1,6 +1,6 @@
 """Matrix inversion, diagnosis, and marginalized constraints."""
 
-from typing import Literal, get_args
+from typing import Literal, get_args, overload
 
 import numpy as np
 import xarray as xr
@@ -87,56 +87,20 @@ def _residual(values: np.ndarray, inverse: np.ndarray) -> float:
     return float(np.max(np.abs(values @ inverse - identity)))
 
 
-def diagnose(F: xr.DataArray, *, method: InversionMethod = "cholesky") -> xr.Dataset:
-    """Return numerical diagnostics for a Fisher matrix and one inversion.
-
-    Parameters
-    ----------
-    F : xarray.DataArray
-        Matrix satisfying the canonical matrix contract.
-    method : {'cholesky', 'inv', 'pinv'}
-        Inversion algorithm; see :func:`inv`.
-
-    Returns
-    -------
-    xarray.Dataset
-        Fresh diagnostics. ``eigenvalues`` lies on dimension ``index``, in
-        ascending order. Scalar variables are ``condition_number``, ``rank``,
-        ``positive_definite``, ``positive_semidefinite``, ``residual``,
-        ``success``, ``method``, and ``error``. The coordinate ``parameter`` carries the matrix labels and
-        is not a dimension of any variable.
-
-    Raises
-    ------
-    ValueError
-        If the matrix contract is violated or ``method`` is unknown.
-
-    Notes
-    -----
-    A failed inversion does not raise. ``success`` is false, ``error`` holds
-    the ``LinAlgError`` message, and ``residual`` is NaN; the spectrum is
-    still returned. ``condition_number`` is the ratio of the largest
-    eigenvalue to the smallest, or infinity unless the matrix is positive
-    definite. ``positive_semidefinite`` permits negative eigenvalues within
-    ``n * eps * max(abs(eigenvalues))``, where ``eps`` is float64 machine
-    precision. ``positive_definite`` requires strictly positive eigenvalues;
-    ``success`` describes inversion independently of these flags.
-    """
-    _require_method(method)
-    values, parameters = _validate_matrix(F)
+def _diagnostics(
+    values: xr.DataArray,
+    parameters: list[str],
+    method: InversionMethod,
+    inverse: xr.DataArray | None,
+    error: str = "",
+) -> xr.Dataset:
+    """Describe a validated matrix and its already computed inverse."""
     eigenvalues, condition, rank, positive_definite, positive_semidefinite = _spectrum(
         values
     )
-    try:
-        inverse = _invert(values, parameters, method)
-    except np.linalg.LinAlgError as error:
-        residual = np.nan
-        success = False
-        message = str(error)
-    else:
-        residual = _residual(values.values, inverse.values)
-        success = True
-        message = ""
+    residual = (
+        _residual(values.values, inverse.values) if inverse is not None else np.nan
+    )
     return xr.Dataset(
         data_vars={
             "eigenvalues": eigenvalues.copy(deep=True),
@@ -145,12 +109,42 @@ def diagnose(F: xr.DataArray, *, method: InversionMethod = "cholesky") -> xr.Dat
             "positive_definite": bool(positive_definite),
             "positive_semidefinite": bool(positive_semidefinite),
             "residual": np.float64(residual),
-            "success": bool(success),
+            "success": inverse is not None,
             "method": method,
-            "error": message,
+            "error": error,
         },
         coords={"parameter": ("parameter", list(parameters))},
     )
+
+
+@overload
+def inv(
+    F: xr.DataArray,
+    *,
+    method: InversionMethod = "cholesky",
+    metadata: bool = False,
+    return_diagnostics: Literal[False] = False,
+) -> xr.DataArray: ...
+
+
+@overload
+def inv(
+    F: xr.DataArray,
+    *,
+    method: InversionMethod = "cholesky",
+    metadata: bool = False,
+    return_diagnostics: Literal[True],
+) -> tuple[xr.DataArray, xr.Dataset]: ...
+
+
+@overload
+def inv(
+    F: xr.DataArray,
+    *,
+    method: InversionMethod = "cholesky",
+    metadata: bool = False,
+    return_diagnostics: bool,
+) -> xr.DataArray | tuple[xr.DataArray, xr.Dataset]: ...
 
 
 def inv(
@@ -158,7 +152,8 @@ def inv(
     *,
     method: InversionMethod = "cholesky",
     metadata: bool = False,
-) -> xr.DataArray:
+    return_diagnostics: bool = False,
+) -> xr.DataArray | tuple[xr.DataArray, xr.Dataset]:
     """Return the labeled inverse, or covariance of a Fisher matrix.
 
     Parameters
@@ -175,11 +170,22 @@ def inv(
     metadata : bool
         If true, record inversion diagnostics in the result's ``attrs``; see
         Notes.
+    return_diagnostics : bool
+        If true, return ``(covariance, diagnostics)`` from this inversion.
 
     Returns
     -------
     xarray.DataArray
-        Fresh symmetric inverse with the input parameter order.
+        Fresh symmetric inverse with the input parameter order, when
+        ``return_diagnostics=False`` (default).
+    tuple of (xarray.DataArray, xarray.Dataset)
+        Inverse and diagnostics when ``return_diagnostics=True``. The Dataset
+        contains ascending ``eigenvalues`` on dimension ``index`` and scalar
+        ``condition_number``, ``rank``, ``positive_definite``,
+        ``positive_semidefinite``, ``residual``, ``success``, ``method``, and
+        ``error``. Coordinate ``parameter`` carries the input labels.
+        ``success`` is true and ``error`` is empty; inversion failures raise
+        in either mode.
 
     Raises
     ------
@@ -191,6 +197,12 @@ def inv(
 
     Notes
     -----
+    Diagnostics describe the input matrix and the computed inverse.
+    ``positive_definite`` requires strictly positive eigenvalues;
+    ``positive_semidefinite`` permits negative eigenvalues within
+    ``n * eps * max(abs(eigenvalues))``, using float64 machine precision.
+    The residual is ``max|F @ C - I|``, including for pseudoinverses.
+
     With ``metadata=True`` the result's ``attrs`` hold ``method``,
     ``condition_number`` (largest over smallest eigenvalue of ``F``, ``inf``
     unless ``F`` is positive definite) and ``residual`` (``max|F @ C - I|``).
@@ -200,13 +212,15 @@ def inv(
     _require_method(method)
     values, parameters = _validate_matrix(F)
     covariance = _invert(values, parameters, method)
-    if metadata:
-        _, condition, _, _, _ = _spectrum(values)
-        covariance.attrs = {
-            "method": method,
-            "condition_number": condition,
-            "residual": _residual(values.values, covariance.values),
-        }
+    if metadata or return_diagnostics:
+        diagnostics = _diagnostics(values, parameters, method, covariance)
+        if metadata:
+            covariance.attrs = {
+                name: diagnostics[name].item()
+                for name in ("method", "condition_number", "residual")
+            }
+        if return_diagnostics:
+            return covariance, diagnostics
     return covariance
 
 

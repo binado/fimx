@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 import xarray as xr
 
-from fimx import diagnose, errors, inv, matrix
+from fimx import errors, inv, matrix
 
 METHODS = ["cholesky", "inv", "pinv"]
 
@@ -128,9 +128,8 @@ def test_metadata_condition_number_infinite_if_not_positive_definite(
     assert covariance.attrs["condition_number"] == np.inf
 
 
-def test_diagnose_matches_metadata(F: xr.DataArray) -> None:
-    diagnosis = diagnose(F)
-    covariance = inv(F, metadata=True)
+def test_inversion_diagnostics_matches_metadata(F: xr.DataArray) -> None:
+    covariance, diagnosis = inv(F, metadata=True, return_diagnostics=True)
     assert diagnosis["method"].item() == covariance.attrs["method"]
     assert bool(diagnosis["success"].item())
     assert diagnosis["error"].item() == ""
@@ -158,29 +157,28 @@ def test_diagnose_matches_metadata(F: xr.DataArray) -> None:
     }
 
 
-def test_diagnose_keeps_spectrum_when_cholesky_fails() -> None:
-    F = matrix([[1, 2], [2, 1]], ["a", "b"])
-    diagnosis = diagnose(F)
-    assert not bool(diagnosis["success"].item())
-    assert str(diagnosis["error"].item())
-    assert np.isnan(float(diagnosis["residual"]))
-    assert diagnosis["eigenvalues"].sizes["index"] == 2
-    assert not bool(diagnosis["positive_definite"].item())
-    assert diagnosis["condition_number"].item() == np.inf
-
-
-def test_diagnose_pinv_of_singular_matrix() -> None:
+@pytest.mark.parametrize("return_diagnostics", [False, True])
+@pytest.mark.parametrize("method", ["cholesky", "inv"])
+def test_inversion_diagnostics_raise_on_failure(
+    method: str, return_diagnostics: bool
+) -> None:
     F = matrix([[1, 1], [1, 1]], ["a", "b"])
-    diagnosis = diagnose(F, method="pinv")
+    with pytest.raises(np.linalg.LinAlgError):
+        inv(F, method=method, return_diagnostics=return_diagnostics)  # ty: ignore[no-matching-overload]
+
+
+def test_inversion_diagnostics_pinv_of_singular_matrix() -> None:
+    F = matrix([[1, 1], [1, 1]], ["a", "b"])
+    _, diagnosis = inv(F, method="pinv", return_diagnostics=True)
     assert bool(diagnosis["success"].item())
     assert int(diagnosis["rank"]) == 1
     assert diagnosis["error"].item() == ""
     assert np.isfinite(float(diagnosis["residual"]))
 
 
-def test_diagnose_unknown_method_raises(F: xr.DataArray) -> None:
+def test_inversion_diagnostics_unknown_method_raises(F: xr.DataArray) -> None:
     with pytest.raises(ValueError, match="Unknown inversion method"):
-        diagnose(F, method="lu")  # ty: ignore[invalid-argument-type]
+        inv(F, method="lu", return_diagnostics=True)  # ty: ignore[no-matching-overload]
 
 
 @pytest.mark.parametrize(
@@ -196,7 +194,7 @@ def test_diagnose_unknown_method_raises(F: xr.DataArray) -> None:
     ],
 )
 @pytest.mark.parametrize("scale", [1e-100, 1.0, 1e100])
-def test_diagnose_definiteness_is_scale_relative(
+def test_inversion_diagnostics_definiteness_is_scale_relative(
     diagonal: list[float],
     positive_definite: bool,
     positive_semidefinite: bool,
@@ -205,7 +203,7 @@ def test_diagnose_definiteness_is_scale_relative(
 ) -> None:
     F = matrix(np.diag(diagonal) * scale, ["z", "a"])
     original = F.copy(deep=True)
-    diagnosis = diagnose(F, method="pinv")
+    _, diagnosis = inv(F, method="pinv", return_diagnostics=True)
     assert diagnosis.positive_definite.item() is positive_definite
     assert diagnosis.positive_semidefinite.item() is positive_semidefinite
     assert diagnosis.positive_semidefinite.dims == ()
@@ -222,3 +220,13 @@ def test_diagnose_definiteness_is_scale_relative(
         assert diagnosis.condition_number.item() == np.inf
     diagnosis.eigenvalues.values[0] = 99
     xr.testing.assert_identical(F, original)
+
+
+@pytest.mark.parametrize("method", METHODS)
+def test_return_diagnostics_preserves_inverse(F: xr.DataArray, method: str) -> None:
+    covariance, diagnostics = inv(F, method=method, return_diagnostics=True)  # ty: ignore[no-matching-overload]
+    xr.testing.assert_identical(covariance, inv(F, method=method))  # ty: ignore[invalid-argument-type]
+    assert diagnostics.method.item() == method
+    assert diagnostics.residual.item() == pytest.approx(
+        np.max(np.abs(F.values @ covariance.values - np.eye(3)))
+    )
