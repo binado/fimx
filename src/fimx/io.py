@@ -69,7 +69,7 @@ def save_dataset(
         Canonical Fisher matrix, stored as ``fisher``.
     covariance : xarray.DataArray, optional
         Inverse or pseudoinverse of ``fisher``, stored as ``covariance`` with
-        its ``attrs`` (such as the diagnostics of ``inv(..., metadata=True)``).
+        its ``attrs``, if any.
         It is never computed here.
     fiducials : array_like or xarray.DataArray, optional
         Finite, real reference values, one per parameter, stored as

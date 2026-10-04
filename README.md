@@ -37,8 +37,10 @@ posterior = combine(F, prior)
 | `fix(F, parameters)` | Remove names through a principal submatrix. |
 | `marginalize(F, parameters)` | Remove names through the Schur complement. |
 | `symmetrize(F)` | Return the symmetric part `(F + F.T) / 2` as a fresh canonical matrix. |
-| `inv(F, method="cholesky", metadata=False)` | Return the inverse; `method` is `cholesky`, `inv`, or `pinv`. With `metadata=True`, `attrs` hold `method`, `condition_number` and `residual`. |
+| `inv(F, method="cholesky", return_diagnostics=False)` | Return the inverse; `method` is `cholesky`, `inv`, or `pinv`. With `return_diagnostics=True`, return `(covariance, diagnostics)`. |
 | `errors(F, method="cholesky")` | Return marginalized standard deviations. |
+| `correlation(F, method="cholesky", return_diagnostics=False)` | Return the correlation matrix `C_ij / (σ_i σ_j)`, or `(correlation, diagnostics)` with `return_diagnostics=True`. |
+| `fom(F, parameters=None)` | Dark Energy Task Force figure of merit, `sqrt(det F)` after marginalizing every unnamed parameter. |
 | `transform(F, jacobian)` | Change variables using `J.T @ F @ J`. |
 | `combine(*matrices)` | Sum independent information over the parameter union. |
 | `gaussian_prior(sigmas)` | Construct diagonal information `1 / sigma**2`. |
@@ -51,9 +53,13 @@ posterior = combine(F, prior)
 - Values must be real, finite, and symmetric. They are converted to float64.
 - Vectors have dimension exactly `("row",)`, a nonempty shape, and explicit
   coordinates of unique string names. Values retain their input dtype.
-- Positive semidefiniteness is not checked, so singular matrices can be built,
-  fixed, transformed, or combined. `inv` and `errors` require positive
-  definite input; `marginalize` only requires the removed block to be.
+- Construction does not check positive semidefiniteness, so singular or
+  indefinite matrices can be built, fixed, transformed, or combined. `inv`
+  and `errors` require positive definiteness with their default Cholesky
+  method. `correlation` requires positive semidefinite input and covariance,
+  with strictly positive covariance diagonals. `fom` requires a positive
+  definite selected marginalized matrix; `marginalize` requires only the
+  removed block to be positive definite.
 - Functions return fresh DataArrays and never mutate their inputs. Attributes,
   names, and auxiliary coordinates are not preserved.
 - Arrays built directly with xarray work if they meet the contract.
@@ -70,6 +76,28 @@ Behavior worth knowing:
 - `combine` keeps the first matrix's order and appends new parameters as they
   appear. Missing entries contribute zero.
 - `gaussian_prior` takes **standard deviations**, not information values.
+- `fom` is `sqrt(det F_subset)`, the reciprocal square root of the
+  determinant of the marginalized covariance. `parameters` names the subset
+  that stays; every other name is marginalized. The determinant does not
+  depend on order. Cholesky both validates positive definiteness and computes
+  the result without forming a potentially overflowing determinant.
+- `correlation(method="pinv")` supports singular positive semidefinite
+  matrices when every pseudoinverse diagonal entry is positive. This describes
+  the normalized pseudoinverse, whose null-space directions have zero variance;
+  it does not restore unconstrained uncertainties. Correlation is undefined
+  when any covariance diagonal entry is zero.
+- `inv(F, return_diagnostics=True)` returns `(covariance, diagnostics)`;
+  `correlation(F, return_diagnostics=True)` returns `(correlation, diagnostics)`.
+  Diagnostics are an xarray Dataset describing the input Fisher matrix and
+  its computed inverse, before correlation normalization. Eigenvalues use
+  dimension `index`, in ascending order, and `parameter` carries the matrix
+  labels. `condition_number` is infinite unless the matrix is positive definite.
+  `positive_definite` requires strictly positive eigenvalues;
+  `positive_semidefinite` allows negative eigenvalues within
+  `n * eps * max(abs(eigenvalues))`, with float64 machine precision `eps` and
+  matrix size `n`. Correlation uses the same scale-relative allowance.
+  The Dataset also contains `rank`, `method`, and `residual` (`max|F @ C - I|`).
+  `success` is true and `error` is empty; failures raise in either return mode.
 - Failures are explicit: `ValueError` for malformed or non-finite data,
   `TypeError` for non-DataArray inputs, and `numpy.linalg.LinAlgError` for
   singular or indefinite matrices. By default `inv` and `errors` use Cholesky and
@@ -185,7 +213,9 @@ The report evaluates one inversion method, `cholesky` by default, selectable
 with `--inversion-method`. It reports the maximum absolute element of
 `F @ F_inv - I`, or the method's error if it cannot invert the matrix. The
 report also includes the condition number, numerical rank, eigenvalue range,
-and positive-definite status. `--save PATH` writes the Dataset, with its
+and positive-definite status. The condition number is infinite unless the
+matrix is positive definite, and that non-finite value is JSON `null`.
+`--save PATH` writes the Dataset, with its
 `fiducials` and `labels`, plus a new `covariance` from the selected method; the
 method is reported on stderr and recorded in the covariance's `attrs` together
 with its condition number and residual. Nothing is written if the selected
@@ -211,7 +241,7 @@ from fimx.io import load_dataset, save_dataset
 save_dataset(
     "forecast.nc",
     F,
-    covariance=inv(F, metadata=True),  # optional, never computed for you
+    covariance=inv(F),  # optional, never computed for you
     fiducials=[0.3, 0.7, 1.0],
     labels=[r"\Omega_m", "h", r"\sigma_8"],
 )
@@ -221,7 +251,7 @@ forecast = load_dataset("forecast.nc")
 | Variable | Dimensions | Required | Meaning |
 | --- | --- | --- | --- |
 | `fisher` | `row`, `col` | yes | Fisher matrix. |
-| `covariance` | `row`, `col` | no | Inverse or pseudoinverse of `fisher`; keeps the `attrs` of `inv(..., metadata=True)`. |
+| `covariance` | `row`, `col` | no | Inverse or pseudoinverse of `fisher`. |
 | `fiducials` | `row` | no (needed to plot) | Reference parameter values. |
 | `labels` | `row` | no | Unique axis labels for plotting, as LaTeX math without the enclosing `$`. |
 

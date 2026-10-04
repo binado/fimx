@@ -3,7 +3,9 @@
 import operator
 from collections.abc import Sequence
 from functools import reduce
+from typing import Literal, cast, overload
 
+import numpy as np
 import xarray as xr
 from xarray_einstats import linalg
 
@@ -16,9 +18,26 @@ from .arrays import (
     _validate_matrix,
     _validate_shape,
 )
-from .inversion import _solve
+from .inversion import (
+    InversionMethod,
+    _diagnostics,
+    _eigenvalues,
+    _invert,
+    _positive_semidefinite,
+    _require_method,
+    _solve,
+)
 
-__all__ = ["combine", "expand", "fix", "marginalize", "symmetrize", "transform"]
+__all__ = [
+    "combine",
+    "correlation",
+    "expand",
+    "fix",
+    "fom",
+    "marginalize",
+    "symmetrize",
+    "transform",
+]
 
 
 def combine(*matrices: xr.DataArray) -> xr.DataArray:
@@ -204,6 +223,160 @@ def marginalize(F: xr.DataArray, parameters: str | Sequence[str]) -> xr.DataArra
         ).rename(rhs_col="col")
         result = result - product
     return _symmetrize(result)
+
+
+def _kept(labels: list[str], parameters: str | Sequence[str]) -> list[str]:
+    """Validate the parameters retained by a figure of merit."""
+    selected = [parameters] if isinstance(parameters, str) else list(parameters)
+    if any(not isinstance(name, str) for name in selected):
+        raise ValueError("Selected parameters must be strings.")
+    if not selected:
+        raise ValueError("Selected parameters must be nonempty.")
+    if len(set(selected)) != len(selected):
+        raise ValueError("Selected parameters must be unique.")
+    for name in selected:
+        if name not in labels:
+            raise KeyError(name)
+    return selected
+
+
+@overload
+def correlation(
+    F: xr.DataArray,
+    *,
+    method: InversionMethod = "cholesky",
+    return_diagnostics: Literal[False] = False,
+) -> xr.DataArray: ...
+
+
+@overload
+def correlation(
+    F: xr.DataArray,
+    *,
+    method: InversionMethod = "cholesky",
+    return_diagnostics: Literal[True],
+) -> tuple[xr.DataArray, xr.Dataset]: ...
+
+
+@overload
+def correlation(
+    F: xr.DataArray,
+    *,
+    method: InversionMethod = "cholesky",
+    return_diagnostics: bool,
+) -> xr.DataArray | tuple[xr.DataArray, xr.Dataset]: ...
+
+
+def correlation(
+    F: xr.DataArray,
+    *,
+    method: InversionMethod = "cholesky",
+    return_diagnostics: bool = False,
+) -> xr.DataArray | tuple[xr.DataArray, xr.Dataset]:
+    """Return the correlation matrix of a Fisher matrix.
+
+    Parameters
+    ----------
+    F : xarray.DataArray
+        Matrix satisfying the canonical matrix contract.
+    method : {'cholesky', 'inv', 'pinv'}
+        Inversion algorithm used to obtain the covariance; see :func:`inv`.
+        ``'pinv'`` supports singular positive semidefinite matrices when all
+        covariance diagonal entries are positive.
+    return_diagnostics : bool
+        If true, return ``(correlation, diagnostics)``. Diagnostics describe
+        the input Fisher matrix and its covariance inversion; see :func:`inv`.
+
+    Returns
+    -------
+    xarray.DataArray
+        Fresh canonical matrix ``C_ij / (sigma_i sigma_j)``, with ones on
+        the diagonal, when ``return_diagnostics=False`` (default).
+    tuple of (xarray.DataArray, xarray.Dataset)
+        Correlation and inversion diagnostics when ``return_diagnostics=True``.
+        The residual refers to the covariance before normalization.
+
+    Raises
+    ------
+    numpy.linalg.LinAlgError
+        If inversion fails, the input or covariance is not positive
+        semidefinite within numerical roundoff, or a covariance diagonal entry
+        is not positive. A zero variance can occur with ``method='pinv'``.
+    ValueError
+        If the matrix contract is violated or ``method`` is unknown.
+
+    Notes
+    -----
+    Semidefiniteness uses the scale-relative eigenvalue roundoff allowance
+    described in :func:`inv`, without modifying the spectrum. Singular
+    pseudoinverse correlations describe normalized pseudoinverse entries,
+    not unconstrained uncertainties.
+    """
+    _require_method(method)
+    values, parameters = _validate_matrix(F)
+    if not _positive_semidefinite(_eigenvalues(values)):
+        raise np.linalg.LinAlgError("Correlation requires positive semidefinite input.")
+    covariance = _invert(values, parameters, method)
+    if not _positive_semidefinite(_eigenvalues(covariance)):
+        raise np.linalg.LinAlgError(
+            "Correlation requires a positive semidefinite covariance."
+        )
+    variance = linalg.diagonal(covariance, dims=("row", "col"))
+    if not bool((variance > 0).all().item()):
+        raise np.linalg.LinAlgError("Correlation requires positive variances.")
+    sigma = cast(xr.DataArray, np.sqrt(variance))
+    normalized = covariance / sigma / sigma.rename(row="col")
+    normalized = xr.where(covariance.row == covariance.col, 1.0, normalized)
+    result = _symmetrize(normalized.transpose("row", "col"))
+    if return_diagnostics:
+        return result, _diagnostics(values, parameters, method, covariance)
+    return result
+
+
+def fom(F: xr.DataArray, parameters: str | Sequence[str] | None = None) -> float:
+    """Return the Dark Energy Task Force figure of merit.
+
+    Parameters
+    ----------
+    F : xarray.DataArray
+        Matrix satisfying the canonical matrix contract.
+    parameters : str or sequence of str, optional
+        Parameters kept in the figure of merit. Every other parameter is
+        marginalized. ``None`` keeps the whole matrix.
+
+    Returns
+    -------
+    float
+        ``sqrt(det F_subset)``, equal to ``1 / sqrt(det C_subset)`` for the
+        marginalized covariance of the kept parameters.
+
+    Raises
+    ------
+    KeyError
+        If a selected name is unknown.
+    ValueError
+        If input is malformed, or the selection is empty, duplicated, or not
+        made of strings.
+    numpy.linalg.LinAlgError
+        If the selected marginalized matrix, or the removed block, is not
+        positive definite.
+
+    Notes
+    -----
+    The figure of merit is computed from the Cholesky diagonal without
+    forming the determinant. The determinant does not depend on parameter
+    order. Passing every parameter keeps the original matrix, because
+    :func:`marginalize` refuses to remove all of them.
+    """
+    matrix, labels = _validate_matrix(F)
+    if parameters is not None:
+        selected = _kept(labels, parameters)
+        complement = [name for name in labels if name not in set(selected)]
+        if complement:
+            matrix = marginalize(matrix, complement)
+    factor = linalg.cholesky(matrix, dims=("row", "col"))
+    diagonal = linalg.diagonal(factor, dims=("row", "col"))
+    return float(np.exp(np.log(diagonal).sum()).item())
 
 
 def transform(F: xr.DataArray, jacobian: xr.DataArray) -> xr.DataArray:

@@ -6,9 +6,11 @@ import xarray as xr
 
 from fimx import (
     combine,
+    correlation,
     errors,
     expand,
     fix,
+    fom,
     inv,
     marginalize,
     matrix,
@@ -322,3 +324,162 @@ def test_invalid_jacobians(F: xr.DataArray, J: xr.DataArray, kind: str) -> None:
 def test_jacobian_must_be_dataarray(F: xr.DataArray) -> None:
     with pytest.raises(TypeError):
         transform(F, np.eye(3))  # ty: ignore[invalid-argument-type]
+
+
+def test_correlation_of_diagonal_matrix_is_identity() -> None:
+    F = matrix([[4, 0], [0, 1]], ["a", "b"])
+    original = F.copy(deep=True)
+    result = correlation(F)
+    expected = matrix(np.eye(2), ["a", "b"])
+    xr.testing.assert_identical(result, expected)
+    xr.testing.assert_identical(F, original)
+    result.values[0, 0] = 0
+    xr.testing.assert_identical(F, original)
+
+
+@pytest.mark.parametrize("method", ["cholesky", "inv", "pinv"])
+def test_correlation_matches_inverse(method: str) -> None:
+    F = matrix([[4, 1], [1, 2]], ["b", "a"])
+    covariance = inv(F)
+    sigma = np.sqrt(np.diag(covariance.values))
+    expected = covariance.values / np.outer(sigma, sigma)
+    original = F.copy(deep=True)
+    result = correlation(F, method=method)  # ty: ignore[invalid-argument-type]
+    np.testing.assert_allclose(result.values, expected)
+    assert result.dims == ("row", "col")
+    assert result.row.values.tolist() == result.col.values.tolist() == ["b", "a"]
+    np.testing.assert_array_equal(np.diag(result.values), [1, 1])
+    np.testing.assert_array_equal(result.values, result.values.T)
+    assert not np.shares_memory(result.values, F.values)
+    result.values[0, 0] = 99
+    xr.testing.assert_identical(F, original)
+
+
+def test_correlation_rejects_zero_variance() -> None:
+    F = matrix([[1, 0], [0, 0]], ["a", "b"])
+    with pytest.raises(np.linalg.LinAlgError):
+        correlation(F, method="pinv")
+
+
+def test_fom_of_diagonal_matrix() -> None:
+    F = matrix([[4, 0], [0, 1]], ["a", "b"])
+    assert fom(F) == pytest.approx(2)
+
+
+def test_fom_matches_determinant_and_schur_complement() -> None:
+    F = matrix([[4, 1], [1, 2]], ["a", "b"])
+    assert fom(F) == pytest.approx(np.sqrt(7))
+    assert fom(F, "a") == pytest.approx(np.sqrt(3.5))
+    assert fom(F, ["b", "a"]) == pytest.approx(fom(F))
+
+
+def test_invalid_fom_selection() -> None:
+    F = matrix([[4, 1], [1, 2]], ["a", "b"])
+    with pytest.raises(KeyError):
+        fom(F, "z")
+    with pytest.raises(ValueError):
+        fom(F, ["a", "a"])
+    with pytest.raises(ValueError):
+        fom(F, [])
+
+
+@pytest.mark.parametrize("diagonal", [[0, 1], [-1, -2], [-1, 2], [-1, -2, 3]])
+@pytest.mark.parametrize("selection", ["full", "all", "subset", "removed"])
+def test_fom_requires_positive_definite_matrix(
+    diagonal: list[float], selection: str
+) -> None:
+    labels = [f"p{i}" for i in range(len(diagonal))]
+    parameters = None
+    if selection in {"subset", "removed"}:
+        diagonal = [*diagonal, 4]
+        labels = [*labels, "valid"]
+        parameters = labels[:-1] if selection == "subset" else ["valid"]
+    elif selection == "all":
+        parameters = labels[::-1]
+    F = matrix(np.diag(diagonal), labels)
+    original = F.copy(deep=True)
+    with pytest.raises(np.linalg.LinAlgError):
+        fom(F, parameters)
+    xr.testing.assert_identical(F, original)
+
+
+def test_fom_large_representable_value_without_determinant_overflow() -> None:
+    F = matrix(np.diag([1e200, 1e200]), ["b", "a"])
+    original = F.copy(deep=True)
+    assert fom(F) == pytest.approx(1e200)
+    xr.testing.assert_identical(F, original)
+
+
+@pytest.mark.parametrize("parameters", [None, ["a", "b"], ["b", "a"], "a"])
+def test_fom_preserves_input_and_parameter_order(
+    F: xr.DataArray, parameters: str | list[str] | None
+) -> None:
+    original = F.copy(deep=True)
+    reordered = F.sel(row=["c", "b", "a"], col=["c", "b", "a"])
+    assert fom(F, parameters) == pytest.approx(fom(reordered, parameters))
+    xr.testing.assert_identical(F, original)
+
+
+@pytest.mark.parametrize("method", ["inv", "pinv"])
+def test_correlation_rejects_indefinite_input_with_positive_variances(
+    method: str,
+) -> None:
+    F = matrix([[-1, 2], [2, -1]], ["b", "a"])
+    with pytest.raises(np.linalg.LinAlgError, match="positive semidefinite"):
+        correlation(F, method=method)  # ty: ignore[invalid-argument-type]
+
+
+def test_correlation_pinv_accepts_singular_positive_semidefinite_input() -> None:
+    F = matrix([[1, 1], [1, 1]], ["b", "a"])
+    original = F.copy(deep=True)
+    result = correlation(F, method="pinv")
+    xr.testing.assert_identical(result, matrix(np.ones((2, 2)), ["b", "a"]))
+    assert not np.shares_memory(result.values, F.values)
+    result.values[0, 0] = 99
+    xr.testing.assert_identical(F, original)
+
+
+@pytest.mark.parametrize("scale", [1e-100, 1.0, 1e100])
+def test_correlation_rejects_indefinite_covariance_within_input_roundoff(
+    scale: float,
+) -> None:
+    # The Fisher spectrum passes the roundoff allowance, but its inverse does not.
+    F = matrix(np.diag([-np.finfo(np.float64).eps, 1.0]) * scale, ["b", "a"])
+    with pytest.raises(np.linalg.LinAlgError, match="positive semidefinite covariance"):
+        correlation(F, method="inv")
+
+
+def test_correlation_validates_method_before_definiteness() -> None:
+    F = matrix([[-1, 2], [2, -1]], ["b", "a"])
+    with pytest.raises(ValueError, match="Unknown inversion method"):
+        correlation(F, method="lu")  # ty: ignore[invalid-argument-type]
+
+
+@pytest.mark.parametrize("method", ["cholesky", "inv", "pinv"])
+def test_correlation_returns_inversion_diagnostics(
+    F: xr.DataArray, method: str
+) -> None:
+    result, diagnostics = correlation(F, method=method, return_diagnostics=True)  # ty: ignore[no-matching-overload]
+    _, expected = inv(F, method=method, return_diagnostics=True)  # ty: ignore[no-matching-overload]
+    xr.testing.assert_identical(result, correlation(F, method=method))  # ty: ignore[invalid-argument-type]
+    xr.testing.assert_identical(diagnostics, expected)
+
+
+def test_correlation_pinv_returns_singular_diagnostics() -> None:
+    F = matrix([[1, 1], [1, 1]], ["z", "a"])
+    result, diagnostics = correlation(F, method="pinv", return_diagnostics=True)
+    np.testing.assert_allclose(result.values, np.ones((2, 2)))
+    assert diagnostics["rank"].item() == 1
+    assert diagnostics.condition_number.item() == np.inf
+    assert diagnostics.parameter.values.tolist() == ["z", "a"]
+    assert diagnostics.residual.item() == pytest.approx(0.5)
+
+
+@pytest.mark.parametrize("method", ["cholesky", "inv", "pinv"])
+@pytest.mark.parametrize("values", [[[1, 2], [2, 1]], [[4, 0], [0, 0]]])
+def test_correlation_diagnostics_preserve_failures(
+    method: str, values: list[list[float]]
+) -> None:
+    F = matrix(values, ["a", "b"])
+    with pytest.raises(np.linalg.LinAlgError):
+        correlation(F, method=method, return_diagnostics=True)  # ty: ignore[no-matching-overload]

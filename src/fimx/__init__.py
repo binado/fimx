@@ -3,15 +3,26 @@
 from .arrays import gaussian_prior, matrix, vector
 from .datasets import dataset
 from .inversion import errors, inv
-from .ops import combine, expand, fix, marginalize, symmetrize, transform
+from .ops import (
+    combine,
+    correlation,
+    expand,
+    fix,
+    fom,
+    marginalize,
+    symmetrize,
+    transform,
+)
 from .plotting import plot
 
 __all__ = [
     "combine",
+    "correlation",
     "dataset",
     "errors",
     "expand",
     "fix",
+    "fom",
     "gaussian_prior",
     "inv",
     "marginalize",

@@ -86,6 +86,7 @@ def test_invert_method_failure_returns_nonzero(tmp_path: Path) -> None:
     assert report["method"] == "cholesky"
     assert report["success"] is False
     assert report["error"] is not None
+    assert report["condition_number"] is None
 
 
 def test_invert_unknown_method_exits(tmp_path: Path) -> None:
@@ -137,7 +138,7 @@ def test_save_writes_covariance_and_keeps_other_variables(tmp_path: Path) -> Non
 def test_save_replaces_existing_covariance(tmp_path: Path) -> None:
     F = matrix([[4, 1], [1, 2]], ["a", "b"])
     path = tmp_path / "forecast.nc"
-    save_dataset(path, F, covariance=inv(F, method="inv", metadata=True))
+    save_dataset(path, F, covariance=inv(F, method="inv"))
     out = tmp_path / "out.nc"
 
     runner.invoke(app, ["invert", "--file", str(path), "--save", str(out)])

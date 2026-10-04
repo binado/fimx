@@ -92,37 +92,80 @@ def test_unknown_method_raises(
         operation(F, method="lu")
 
 
-def test_metadata_off_by_default(F: xr.DataArray) -> None:
+def test_inverse_has_no_diagnostics_attrs_by_default(F: xr.DataArray) -> None:
     assert inv(F).attrs == {}
 
 
-@pytest.mark.parametrize("method", METHODS)
-def test_metadata_diagnostics(F: xr.DataArray, method: str) -> None:
-    covariance = inv(F, method=method, metadata=True)  # ty: ignore[invalid-argument-type]
-    eigenvalues = np.linalg.eigvalsh(F.values)
-    assert covariance.attrs["method"] == method
-    assert covariance.attrs["condition_number"] == pytest.approx(
-        eigenvalues[-1] / eigenvalues[0]
-    )
-    assert covariance.attrs["residual"] < 1e-6
+@pytest.mark.parametrize("return_diagnostics", [False, True])
+@pytest.mark.parametrize("method", ["cholesky", "inv"])
+def test_inversion_diagnostics_raise_on_failure(
+    method: str, return_diagnostics: bool
+) -> None:
+    F = matrix([[1, 1], [1, 1]], ["a", "b"])
+    with pytest.raises(np.linalg.LinAlgError):
+        inv(F, method=method, return_diagnostics=return_diagnostics)  # ty: ignore[no-matching-overload]
 
 
-def test_metadata_does_not_change_values(F: xr.DataArray) -> None:
-    xr.testing.assert_identical(inv(F, metadata=True).drop_attrs(), inv(F))
+def test_inversion_diagnostics_pinv_of_singular_matrix() -> None:
+    F = matrix([[1, 1], [1, 1]], ["a", "b"])
+    _, diagnosis = inv(F, method="pinv", return_diagnostics=True)
+    assert bool(diagnosis["success"].item())
+    assert int(diagnosis["rank"]) == 1
+    assert diagnosis["error"].item() == ""
+    assert np.isfinite(float(diagnosis["residual"]))
 
 
-def test_metadata_condition_number_of_diagonal_matrix() -> None:
-    F = matrix([[4, 0], [0, 1]], ["a", "b"])
-    assert inv(F, metadata=True).attrs["condition_number"] == pytest.approx(4)
+def test_inversion_diagnostics_unknown_method_raises(F: xr.DataArray) -> None:
+    with pytest.raises(ValueError, match="Unknown inversion method"):
+        inv(F, method="lu", return_diagnostics=True)  # ty: ignore[no-matching-overload]
 
 
 @pytest.mark.parametrize(
-    "values", [[[1, 1], [1, 1]], [[4, 0], [0, 0]], [[1, 2], [2, 1]]]
+    ("diagonal", "positive_definite", "positive_semidefinite", "rank"),
+    [
+        ([1.0, 2.0], True, True, 2),
+        ([0.0, 1.0], False, True, 1),
+        ([0.0, 0.0], False, True, 0),
+        ([-1.0, 2.0], False, False, 2),
+        ([-np.finfo(np.float64).eps, 1.0], False, True, 1),
+        ([-1e-12, 1.0], False, False, 2),
+        ([-1.0, -2.0], False, False, 2),
+    ],
 )
-def test_metadata_condition_number_infinite_if_not_positive_definite(
-    values: list[list[float]],
+@pytest.mark.parametrize("scale", [1e-100, 1.0, 1e100])
+def test_inversion_diagnostics_definiteness_is_scale_relative(
+    diagonal: list[float],
+    positive_definite: bool,
+    positive_semidefinite: bool,
+    rank: int,
+    scale: float,
 ) -> None:
-    F = matrix(values, ["a", "b"])
-    method = "inv" if values == [[1, 2], [2, 1]] else "pinv"
-    covariance = inv(F, method=method, metadata=True)
-    assert covariance.attrs["condition_number"] == np.inf
+    F = matrix(np.diag(diagonal) * scale, ["z", "a"])
+    original = F.copy(deep=True)
+    _, diagnosis = inv(F, method="pinv", return_diagnostics=True)
+    assert diagnosis.positive_definite.item() is positive_definite
+    assert diagnosis.positive_semidefinite.item() is positive_semidefinite
+    assert diagnosis.positive_semidefinite.dims == ()
+    assert diagnosis.positive_semidefinite.dtype == np.bool_
+    assert diagnosis.success.item() is True
+    assert diagnosis["rank"].item() == rank
+    assert diagnosis.eigenvalues.dims == ("index",)
+    assert set(diagnosis.coords) == {"parameter"}
+    assert diagnosis.parameter.values.tolist() == ["z", "a"]
+    np.testing.assert_allclose(diagnosis.eigenvalues.values / scale, sorted(diagonal))
+    if positive_definite:
+        assert diagnosis.condition_number.item() == pytest.approx(2)
+    else:
+        assert diagnosis.condition_number.item() == np.inf
+    diagnosis.eigenvalues.values[0] = 99
+    xr.testing.assert_identical(F, original)
+
+
+@pytest.mark.parametrize("method", METHODS)
+def test_return_diagnostics_preserves_inverse(F: xr.DataArray, method: str) -> None:
+    covariance, diagnostics = inv(F, method=method, return_diagnostics=True)  # ty: ignore[no-matching-overload]
+    xr.testing.assert_identical(covariance, inv(F, method=method))  # ty: ignore[invalid-argument-type]
+    assert diagnostics.method.item() == method
+    assert diagnostics.residual.item() == pytest.approx(
+        np.max(np.abs(F.values @ covariance.values - np.eye(3)))
+    )

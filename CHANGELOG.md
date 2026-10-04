@@ -9,12 +9,17 @@ change before 1.0.
 
 ### Added
 
+- `correlation()` returning the correlation matrix of a Fisher matrix.
+- `fom()` returning the Dark Energy Task Force figure of merit,
+  `sqrt(det F)` after optional marginalization.
+- `return_diagnostics` argument for `inv()` and `correlation()`, returning
+  the result alongside an xarray Dataset with the eigenvalue spectrum,
+  condition number, rank, positive-definite and positive-semidefinite status,
+  and inversion residual.
 - `symmetrize()` returning the symmetric part `(F + F.T) / 2` of a labeled
   matrix as a fresh canonical matrix.
 - `fimx.ops` and `fimx.arrays` submodules for operations and construction.
 - `vector()` for constructing labeled one-dimensional parameter arrays.
-- `metadata` argument for `inv`, which records the method, condition number and
-  inverse residual in the result's `attrs`.
 - `fimx.io.save_dataset` to write a forecast with optional `covariance`,
   `fiducials` and plotting `labels`.
 - `--save` option for `fimx invert`, which writes the Dataset with a freshly
@@ -25,6 +30,16 @@ change before 1.0.
 
 ### Changed
 
+- `fom()` validates positive definiteness using Cholesky and computes the
+  result from its diagonal without forming the determinant.
+- `correlation()` rejects indefinite input and covariance using the same
+  scale-relative eigenvalue tolerance as `inv()` diagnostics. Singular positive
+  semidefinite input remains supported with `method="pinv"` when every
+  covariance diagonal entry is positive.
+- `fimx invert` takes its condition number from inversion diagnostics. The number is
+  infinite unless the matrix is positive definite, and the JSON report
+  encodes that non-finite value as `null`. Its report and `--save` reuse
+  the same computed covariance.
 - Internal reorganization: `construction` is renamed `arrays` and hosts
   `gaussian_prior`; `combination` and `parameters` are merged into `ops`. The
   flat top-level API is unchanged.
