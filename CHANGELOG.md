@@ -20,8 +20,6 @@ change before 1.0.
   matrix as a fresh canonical matrix.
 - `fimx.ops` and `fimx.arrays` submodules for operations and construction.
 - `vector()` for constructing labeled one-dimensional parameter arrays.
-- `metadata` argument for `inv`, which records the method, condition number and
-  inverse residual in the result's `attrs`.
 - `fimx.io.save_dataset` to write a forecast with optional `covariance`,
   `fiducials` and plotting `labels`.
 - `--save` option for `fimx invert`, which writes the Dataset with a freshly

@@ -121,9 +121,7 @@ def _inversion_report(
 ) -> tuple[InversionReport, xr.DataArray | None]:
     """Calculate an inversion once and retain its covariance for saving."""
     try:
-        covariance, diagnosis = inv(
-            fisher, method=method, metadata=True, return_diagnostics=True
-        )
+        covariance, diagnosis = inv(fisher, method=method, return_diagnostics=True)
     except np.linalg.LinAlgError as error:
         covariance = None
         values, parameters = _validate_matrix(fisher)

@@ -92,69 +92,8 @@ def test_unknown_method_raises(
         operation(F, method="lu")
 
 
-def test_metadata_off_by_default(F: xr.DataArray) -> None:
+def test_inverse_has_no_diagnostics_attrs_by_default(F: xr.DataArray) -> None:
     assert inv(F).attrs == {}
-
-
-@pytest.mark.parametrize("method", METHODS)
-def test_metadata_diagnostics(F: xr.DataArray, method: str) -> None:
-    covariance = inv(F, method=method, metadata=True)  # ty: ignore[invalid-argument-type]
-    eigenvalues = np.linalg.eigvalsh(F.values)
-    assert covariance.attrs["method"] == method
-    assert covariance.attrs["condition_number"] == pytest.approx(
-        eigenvalues[-1] / eigenvalues[0]
-    )
-    assert covariance.attrs["residual"] < 1e-6
-
-
-def test_metadata_does_not_change_values(F: xr.DataArray) -> None:
-    xr.testing.assert_identical(inv(F, metadata=True).drop_attrs(), inv(F))
-
-
-def test_metadata_condition_number_of_diagonal_matrix() -> None:
-    F = matrix([[4, 0], [0, 1]], ["a", "b"])
-    assert inv(F, metadata=True).attrs["condition_number"] == pytest.approx(4)
-
-
-@pytest.mark.parametrize(
-    "values", [[[1, 1], [1, 1]], [[4, 0], [0, 0]], [[1, 2], [2, 1]]]
-)
-def test_metadata_condition_number_infinite_if_not_positive_definite(
-    values: list[list[float]],
-) -> None:
-    F = matrix(values, ["a", "b"])
-    method = "inv" if values == [[1, 2], [2, 1]] else "pinv"
-    covariance = inv(F, method=method, metadata=True)
-    assert covariance.attrs["condition_number"] == np.inf
-
-
-def test_inversion_diagnostics_matches_metadata(F: xr.DataArray) -> None:
-    covariance, diagnosis = inv(F, metadata=True, return_diagnostics=True)
-    assert diagnosis["method"].item() == covariance.attrs["method"]
-    assert bool(diagnosis["success"].item())
-    assert diagnosis["error"].item() == ""
-    assert float(diagnosis["condition_number"]) == pytest.approx(
-        covariance.attrs["condition_number"]
-    )
-    assert float(diagnosis["residual"]) == pytest.approx(covariance.attrs["residual"])
-    assert diagnosis.parameter.values.tolist() == ["a", "b", "c"]
-    assert diagnosis["eigenvalues"].dims == ("index",)
-    assert bool(diagnosis["positive_definite"].item())
-    assert int(diagnosis["rank"]) == 3
-    np.testing.assert_allclose(
-        diagnosis["eigenvalues"].values, np.linalg.eigvalsh(F.values)
-    )
-    assert set(diagnosis.data_vars) == {
-        "eigenvalues",
-        "condition_number",
-        "rank",
-        "positive_definite",
-        "positive_semidefinite",
-        "residual",
-        "success",
-        "method",
-        "error",
-    }
 
 
 @pytest.mark.parametrize("return_diagnostics", [False, True])

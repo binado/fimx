@@ -12,7 +12,7 @@ from fimx.io import load_dataset, save_dataset
 
 def test_round_trip_with_all_fields(F: xr.DataArray, tmp_path: Path) -> None:
     path = tmp_path / "forecast.nc"
-    covariance = inv(F, metadata=True)
+    covariance = inv(F)
     save_dataset(
         path,
         F,
@@ -26,9 +26,6 @@ def test_round_trip_with_all_fields(F: xr.DataArray, tmp_path: Path) -> None:
     np.testing.assert_allclose(loaded["covariance"].values, covariance.values)
     np.testing.assert_allclose(loaded["fiducials"].values, [1.0, 2.0, 3.0])
     assert loaded["labels"].values.tolist() == ["a_1", "b_1", "c_1"]
-    assert loaded["covariance"].attrs["condition_number"] == pytest.approx(
-        covariance.attrs["condition_number"]
-    )
 
 
 def test_fisher_only(F: xr.DataArray, tmp_path: Path) -> None:

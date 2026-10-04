@@ -122,7 +122,6 @@ def inv(
     F: xr.DataArray,
     *,
     method: InversionMethod = "cholesky",
-    metadata: bool = False,
     return_diagnostics: Literal[False] = False,
 ) -> xr.DataArray: ...
 
@@ -132,7 +131,6 @@ def inv(
     F: xr.DataArray,
     *,
     method: InversionMethod = "cholesky",
-    metadata: bool = False,
     return_diagnostics: Literal[True],
 ) -> tuple[xr.DataArray, xr.Dataset]: ...
 
@@ -142,7 +140,6 @@ def inv(
     F: xr.DataArray,
     *,
     method: InversionMethod = "cholesky",
-    metadata: bool = False,
     return_diagnostics: bool,
 ) -> xr.DataArray | tuple[xr.DataArray, xr.Dataset]: ...
 
@@ -151,7 +148,6 @@ def inv(
     F: xr.DataArray,
     *,
     method: InversionMethod = "cholesky",
-    metadata: bool = False,
     return_diagnostics: bool = False,
 ) -> xr.DataArray | tuple[xr.DataArray, xr.Dataset]:
     """Return the labeled inverse, or covariance of a Fisher matrix.
@@ -167,9 +163,6 @@ def inv(
         pseudoinverse, which always succeeds but assigns zero variance to
         unconstrained (null-space) directions, so degenerate parameters appear
         perfectly constrained rather than unconstrained.
-    metadata : bool
-        If true, record inversion diagnostics in the result's ``attrs``; see
-        Notes.
     return_diagnostics : bool
         If true, return ``(covariance, diagnostics)`` from this inversion.
 
@@ -203,24 +196,13 @@ def inv(
     ``n * eps * max(abs(eigenvalues))``, using float64 machine precision.
     The residual is ``max|F @ C - I|``, including for pseudoinverses.
 
-    With ``metadata=True`` the result's ``attrs`` hold ``method``,
-    ``condition_number`` (largest over smallest eigenvalue of ``F``, ``inf``
-    unless ``F`` is positive definite) and ``residual`` (``max|F @ C - I|``).
-    Like any xarray attributes, they describe this inversion only and are
-    dropped by most subsequent operations.
     """
     _require_method(method)
     values, parameters = _validate_matrix(F)
     covariance = _invert(values, parameters, method)
-    if metadata or return_diagnostics:
+    if return_diagnostics:
         diagnostics = _diagnostics(values, parameters, method, covariance)
-        if metadata:
-            covariance.attrs = {
-                name: diagnostics[name].item()
-                for name in ("method", "condition_number", "residual")
-            }
-        if return_diagnostics:
-            return covariance, diagnostics
+        return covariance, diagnostics
     return covariance
 
 

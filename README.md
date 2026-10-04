@@ -37,7 +37,7 @@ posterior = combine(F, prior)
 | `fix(F, parameters)` | Remove names through a principal submatrix. |
 | `marginalize(F, parameters)` | Remove names through the Schur complement. |
 | `symmetrize(F)` | Return the symmetric part `(F + F.T) / 2` as a fresh canonical matrix. |
-| `inv(F, method="cholesky", metadata=False, return_diagnostics=False)` | Return the inverse; `method` is `cholesky`, `inv`, or `pinv`. With `return_diagnostics=True`, return `(covariance, diagnostics)`. With `metadata=True`, `attrs` hold `method`, `condition_number` and `residual`. |
+| `inv(F, method="cholesky", return_diagnostics=False)` | Return the inverse; `method` is `cholesky`, `inv`, or `pinv`. With `return_diagnostics=True`, return `(covariance, diagnostics)`. |
 | `errors(F, method="cholesky")` | Return marginalized standard deviations. |
 | `correlation(F, method="cholesky", return_diagnostics=False)` | Return the correlation matrix `C_ij / (σ_i σ_j)`, or `(correlation, diagnostics)` with `return_diagnostics=True`. |
 | `fom(F, parameters=None)` | Dark Energy Task Force figure of merit, `sqrt(det F)` after marginalizing every unnamed parameter. |
@@ -241,7 +241,7 @@ from fimx.io import load_dataset, save_dataset
 save_dataset(
     "forecast.nc",
     F,
-    covariance=inv(F, metadata=True),  # optional, never computed for you
+    covariance=inv(F),  # optional, never computed for you
     fiducials=[0.3, 0.7, 1.0],
     labels=[r"\Omega_m", "h", r"\sigma_8"],
 )
@@ -251,7 +251,7 @@ forecast = load_dataset("forecast.nc")
 | Variable | Dimensions | Required | Meaning |
 | --- | --- | --- | --- |
 | `fisher` | `row`, `col` | yes | Fisher matrix. |
-| `covariance` | `row`, `col` | no | Inverse or pseudoinverse of `fisher`; keeps the `attrs` of `inv(..., metadata=True)`. |
+| `covariance` | `row`, `col` | no | Inverse or pseudoinverse of `fisher`. |
 | `fiducials` | `row` | no (needed to plot) | Reference parameter values. |
 | `labels` | `row` | no | Unique axis labels for plotting, as LaTeX math without the enclosing `$`. |
 
