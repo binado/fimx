@@ -4,6 +4,7 @@ from typing import Literal, get_args, overload
 
 import numpy as np
 import xarray as xr
+from numpy.typing import NDArray
 from xarray_einstats import linalg
 
 from .arrays import _symmetrize, _validate_matrix
@@ -81,7 +82,7 @@ def _spectrum(values: xr.DataArray) -> tuple[xr.DataArray, float, int, bool, boo
     )
 
 
-def _residual(values: np.ndarray, inverse: np.ndarray) -> float:
+def _residual(values: NDArray[np.float64], inverse: NDArray[np.float64]) -> float:
     """Return the maximum absolute residual of a computed inverse."""
     identity = np.eye(values.shape[0])
     return float(np.max(np.abs(values @ inverse - identity)))
