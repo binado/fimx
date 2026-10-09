@@ -394,3 +394,38 @@ def test_cli_missing_params_fix(
     result = runner.invoke(app, argv)
     assert result.exit_code == 0
     assert (tmp_path / "out.png").exists()
+
+
+def _write_pair(forecast: xr.Dataset, tmp_path: Path) -> list[str]:
+    paths = []
+    for directory in ("one", "two"):
+        (tmp_path / directory).mkdir()
+        path = tmp_path / directory / "fisher.nc"
+        forecast.to_netcdf(path)
+        paths += ["--file", str(path)]
+    return paths
+
+
+def test_cli_analysis_labels_allow_same_stems(
+    forecast: xr.Dataset, tmp_path: Path
+) -> None:
+    argv = ["plot", "--figure-file", str(tmp_path / "out.png")]
+    argv += _write_pair(forecast, tmp_path)
+    assert runner.invoke(app, argv).exit_code == 2
+    argv += ["--analysis-label", "Planck", "--analysis-label", "Euclid"]
+    result = runner.invoke(app, argv)
+    assert result.exit_code == 0
+    assert (tmp_path / "out.png").exists()
+
+
+@pytest.mark.parametrize("labels", [["only-one"], ["a", "b", "c"], ["same", "same"]])
+def test_cli_invalid_analysis_labels_exit(
+    forecast: xr.Dataset, tmp_path: Path, labels: list[str]
+) -> None:
+    argv = ["plot", "--figure-file", str(tmp_path / "out.png")]
+    argv += _write_pair(forecast, tmp_path)
+    for label in labels:
+        argv += ["--analysis-label", label]
+    result = runner.invoke(app, argv)
+    assert result.exit_code == 2
+    assert not (tmp_path / "out.png").exists()

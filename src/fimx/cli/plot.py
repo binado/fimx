@@ -89,15 +89,31 @@ def plot(
             help="JSON object of backend-specific plotting options.",
         ),
     ] = None,
+    analysis_labels: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--analysis-label",
+            metavar="LABEL",
+            help="Legend label for each --file, in the same order; repeat once "
+            "per file. Defaults to the file stems.",
+        ),
+    ] = None,
 ) -> None:
     """Overlay Fisher forecast Datasets in a corner plot."""
     logging.basicConfig(level=logging.INFO, format="%(message)s")
+    if analysis_labels is not None and len(analysis_labels) != len(files):
+        typer.echo(
+            f"Error: Expected one --analysis-label per --file ({len(files)}), "
+            f"got {len(analysis_labels)}.",
+            err=True,
+        )
+        raise typer.Exit(2)
+    labels = analysis_labels or [path.stem for path in files]
     datasets: dict[str, xr.Dataset] = {}
-    for path in files:
-        label = path.stem
+    for path, label in zip(files, labels, strict=True):
         if label in datasets:
             typer.echo(
-                f"Error: Input filenames must have unique stems; duplicate {label!r}.",
+                f"Error: Analysis labels must be unique; duplicate {label!r}.",
                 err=True,
             )
             raise typer.Exit(2)

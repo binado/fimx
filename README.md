@@ -193,7 +193,9 @@ fimx plot --file survey-a.nc --file survey-b.nc \
     --backend-kwargs '{"contour_colors": ["C0", "C1"]}'
 ```
 
-Each file stem becomes a legend label, so stems must be unique. The output
+Each file stem becomes a legend label, so stems must be unique. Pass
+`--analysis-label` once per `--file`, in the same order, to override the
+labels (all or none); the final labels must be unique. The output
 defaults to `plot.png` at 150 dpi. `--parameters` selects and orders
 parameters. Axis labels come from an optional `labels` variable (see
 [Storage](#storage)); labels for shared plotted parameters must agree across
