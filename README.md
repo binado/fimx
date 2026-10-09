@@ -167,9 +167,12 @@ fig = plot(
 - By default, the plot uses the parameters shared by all forecasts, in the
   first forecast's order. An explicit `parameters` list must be unique and
   present in every forecast.
-- Each full Fisher matrix is inverted before selecting parameters, so omitted
-  parameters are marginalized and every complete matrix (nuisance blocks
-  included) must be positive definite.
+- `missing_params` sets how parameters that are not plotted are treated in each
+  forecast. With `"marginalize"` (default), each full Fisher matrix is inverted
+  before selecting parameters, so every complete matrix (nuisance blocks
+  included) must be positive definite. With `"fix"`, they are removed with
+  `fix` first. Each action is logged at INFO level as
+  `Parameter <name> marginalized|fixed in file <label>`.
 - The GetDist backend draws analytic Gaussians, with no sampling, and returns
   a Matplotlib `Figure` without showing or saving it. Filled contours are the
   default. `backend_kwargs` is forwarded to `triangle_plot`, except `roots`,
@@ -196,7 +199,8 @@ parameters. Axis labels come from an optional `labels` variable (see
 [Storage](#storage)); labels for shared plotted parameters must agree across
 files, and parameter names are used where there are none. `--no-filled` draws
 line contours, `--inversion-method` picks `cholesky`, `inv`, or `pinv`,
-`--backend` picks a backend, and `--backend-kwargs` takes a JSON object.
+`--missing-params` picks `marginalize` (default) or `fix` for parameters not
+plotted in a file, logging each one to stderr, `--backend` picks a backend, and `--backend-kwargs` takes a JSON object.
 `fimx.io.load_dataset(path)` loads the same files from Python.
 
 `fimx invert` needs only the `cli` extra. It reports matrix conditioning and

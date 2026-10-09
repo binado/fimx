@@ -1,6 +1,7 @@
 """Plot subcommand."""
 
 import json
+import logging
 from pathlib import Path
 from typing import Annotated, Any
 
@@ -10,6 +11,7 @@ import xarray as xr
 from ..inversion import InversionMethod
 from ..io import load_dataset
 from ..plotting import plot as plot_forecasts
+from ..plotting.base import MissingParams
 
 
 def _json_object(value: str) -> dict[str, Any]:
@@ -66,6 +68,14 @@ def plot(
             help="Fisher matrix inversion method.",
         ),
     ] = "cholesky",
+    missing_params: Annotated[
+        MissingParams,
+        typer.Option(
+            "--missing-params",
+            help="Handle parameters that are not plotted in a file "
+            "(e.g. not shared by all files): marginalize over them or fix them.",
+        ),
+    ] = "marginalize",
     backend: Annotated[
         str,
         typer.Option("--backend", metavar="NAME", help="Plotting backend."),
@@ -81,6 +91,7 @@ def plot(
     ] = None,
 ) -> None:
     """Overlay Fisher forecast Datasets in a corner plot."""
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
     datasets: dict[str, xr.Dataset] = {}
     for path in files:
         label = path.stem
@@ -97,6 +108,7 @@ def plot(
         parameters=parameters,
         filled=filled,
         method=method,
+        missing_params=missing_params,
         backend=backend,
         backend_kwargs=backend_kwargs,
     )

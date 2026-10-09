@@ -318,3 +318,79 @@ def test_latex_dataset_labels_render(forecast: xr.Dataset) -> None:
     figure = plot({"survey": _labeled(forecast, [r"\Omega_m", "h", r"\sigma_8"])})
     figure.canvas.draw()
     assert r"$\Omega_m$" in _xlabels(figure)
+
+
+def _variance(figure: Figure) -> float:
+    x, density = figure.axes[0].lines[0].get_data()
+    quadratic, _, _ = np.polyfit(
+        np.asarray(x, dtype=float), np.log(np.asarray(density, dtype=float)), 2
+    )
+    return -1 / (2 * quadratic)
+
+
+@pytest.fixture
+def partial_forecasts() -> dict[str, xr.Dataset]:
+    """Return two forecasts where only ``a`` is shared."""
+    wide = dataset(
+        matrix([[2, 1], [1, 2]], ["a", "nuisance"]),
+        {
+            "fiducials": xr.DataArray(
+                [0, 0], dims="row", coords={"row": ["a", "nuisance"]}
+            )
+        },
+    )
+    other = dataset(
+        matrix([[2]], ["a"]),
+        {"fiducials": xr.DataArray([0], dims="row", coords={"row": ["a"]})},
+    )
+    return {"wide": wide, "other": other}
+
+
+@pytest.mark.parametrize(
+    ("missing_params", "action"), [("marginalize", "marginalized"), ("fix", "fixed")]
+)
+def test_missing_params_are_logged(
+    partial_forecasts: dict[str, xr.Dataset],
+    missing_params: str,
+    action: str,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    with caplog.at_level("INFO"):
+        figure = plot(
+            partial_forecasts,
+            missing_params=missing_params,  # ty: ignore[invalid-argument-type]
+        )
+    assert isinstance(figure, Figure)
+    assert f"Parameter nuisance {action} in file wide" in caplog.messages
+    assert not any("file other" in message for message in caplog.messages)
+
+
+def test_fixing_gives_tighter_constraints_than_marginalizing(
+    partial_forecasts: dict[str, xr.Dataset],
+) -> None:
+    marginalized = _variance(plot(partial_forecasts, missing_params="marginalize"))
+    fixed = _variance(plot(partial_forecasts, missing_params="fix"))
+    assert fixed < marginalized
+
+
+def test_unknown_missing_params_raises(forecast: xr.Dataset) -> None:
+    with pytest.raises(ValueError, match="missing_params"):
+        plot({"survey": forecast}, missing_params="drop")  # ty: ignore[invalid-argument-type]
+
+
+def test_cli_missing_params_fix(
+    partial_forecasts: dict[str, xr.Dataset], tmp_path: Path
+) -> None:
+    argv = [
+        "plot",
+        "--figure-file",
+        str(tmp_path / "out.png"),
+        "--missing-params",
+        "fix",
+    ]
+    for label, ds in partial_forecasts.items():
+        ds.to_netcdf(tmp_path / f"{label}.nc")
+        argv += ["--file", str(tmp_path / f"{label}.nc")]
+    result = runner.invoke(app, argv)
+    assert result.exit_code == 0
+    assert (tmp_path / "out.png").exists()

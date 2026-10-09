@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Protocol
+from typing import TYPE_CHECKING, Any, Literal, Protocol
 
 import numpy as np
 import xarray as xr
@@ -12,9 +13,14 @@ from numpy.typing import NDArray
 
 from ..arrays import _labels, _plot_labels, _real_values, _validate_matrix
 from ..inversion import InversionMethod, inv
+from ..ops import fix
 
 if TYPE_CHECKING:
     from matplotlib.figure import Figure
+
+logger = logging.getLogger(__name__)
+
+MissingParams = Literal["marginalize", "fix"]
 
 
 @dataclass(frozen=True)
@@ -107,8 +113,14 @@ def _prepare(
     parameters: Sequence[str] | None,
     method: InversionMethod = "cholesky",
     parameter_labels: Mapping[str, str] | None = None,
+    missing_params: MissingParams = "marginalize",
 ) -> tuple[list[str], list[str], list[_Gaussian]]:
     """Validate forecasts and select marginalized Gaussian distributions."""
+    if missing_params not in ("marginalize", "fix"):
+        raise ValueError(
+            f"Unknown missing_params {missing_params!r}. "
+            "Available: 'marginalize', 'fix'."
+        )
     if not isinstance(datasets, Mapping):
         raise TypeError("Plot inputs must be a mapping of labels to Datasets.")
     if not datasets:
@@ -142,8 +154,16 @@ def _prepare(
     display = {**_dataset_labels(forecasts, names), **(parameter_labels or {})}
     plot_names = [display.get(name, name) for name in names]
     distributions = []
+    action = "fixed" if missing_params == "fix" else "marginalized"
     for label, ds in forecasts.items():
-        covariance = inv(ds["fisher"], method=method).sel(row=names, col=names)
+        fisher = ds["fisher"]
+        extra = [name for name in fisher.row.values.tolist() if name not in names]
+        for name in extra:
+            logger.info("Parameter %s %s in file %s", name, action, label)
+        if missing_params == "fix" and extra:
+            fisher = fix(fisher, extra)
+        # Inverting before selecting marginalizes any parameter left in ``fisher``.
+        covariance = inv(fisher, method=method).sel(row=names, col=names)
         distributions.append(
             _Gaussian(label, ds["fiducials"].sel(row=names).values, covariance.values)
         )
