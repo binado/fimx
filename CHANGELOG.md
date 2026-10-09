@@ -7,6 +7,8 @@ change before 1.0.
 
 ## [Unreleased]
 
+## [0.3.0]
+
 ### Added
 
 - `correlation()` returning the correlation matrix of a Fisher matrix.
@@ -45,6 +47,8 @@ change before 1.0.
   flat top-level API is unchanged.
 - `fimx-plot` and `fimx-invert` are subcommands of one `fimx` command:
   `fimx plot` and `fimx invert`.
+- `fimx plot --parameters` accepts multiple parameter names by repeating the
+  option.
 - `fimx invert --inversion-method` takes one method (`cholesky` by default)
   instead of evaluating every method, and the JSON report replaces the
   per-method `methods` object with top-level `method`, `success`,
@@ -82,6 +86,7 @@ change before 1.0.
 - `fimx-plot` command-line tool and `fimx.io.load_dataset` for NetCDF files.
 - Optional `io` and `plotting` extras, and a `py.typed` marker.
 
-[Unreleased]: https://github.com/binado/fimx/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/binado/fimx/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/binado/fimx/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/binado/fimx/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/binado/fimx/commits/main
