@@ -7,6 +7,15 @@ change before 1.0.
 
 ## [Unreleased]
 
+## [0.4.0]
+
+### Added
+
+- `fimx plot --missing-params` to choose whether parameters omitted from a
+  forecast plot are marginalized or fixed.
+- Repeatable `fimx plot --analysis-label` options to set unique legend labels
+  for input files.
+
 ## [0.3.0]
 
 ### Added
@@ -86,7 +95,8 @@ change before 1.0.
 - `fimx-plot` command-line tool and `fimx.io.load_dataset` for NetCDF files.
 - Optional `io` and `plotting` extras, and a `py.typed` marker.
 
-[Unreleased]: https://github.com/binado/fimx/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/binado/fimx/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/binado/fimx/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/binado/fimx/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/binado/fimx/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/binado/fimx/commits/main
