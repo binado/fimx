@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Any
 import xarray as xr
 
 from ..inversion import InversionMethod
-from .base import PlotBackend, _prepare
+from .base import MissingParams, PlotBackend, _prepare
 
 if TYPE_CHECKING:
     from matplotlib.figure import Figure
@@ -38,6 +38,7 @@ def plot(
     parameter_labels: Mapping[str, str] | None = None,
     filled: bool = True,
     method: InversionMethod = "cholesky",
+    missing_params: MissingParams = "marginalize",
     backend: str = "getdist",
     backend_kwargs: Mapping[str, Any] | None = None,
 ) -> Figure:
@@ -55,7 +56,7 @@ def plot(
     parameters : sequence of str, optional
         Unique parameters present in every forecast, in plotting order.
         Defaults to their intersection in the first forecast's order.
-        Omitted parameters are marginalized over.
+        Parameters omitted from the plot are handled per ``missing_params``.
     parameter_labels : mapping of str to str, optional
         Display labels keyed by parameter name, as LaTeX math without
         enclosing ``$``. They take precedence over the Datasets' ``labels``;
@@ -65,6 +66,12 @@ def plot(
     method : {'cholesky', 'inv', 'pinv'}
         Algorithm used to invert each full Fisher matrix; see
         :func:`fimx.inv`. Default is ``'cholesky'``.
+    missing_params : {'marginalize', 'fix'}
+        How to treat, in each forecast, the parameters that are not plotted
+        (for example those not shared by all forecasts): marginalize over them
+        or fix them at their fiducial values. Each action is logged at INFO
+        level on the ``fimx.plotting.base`` logger. Default is
+        ``'marginalize'``.
     backend : str
         Backend name. Currently only ``'getdist'`` is supported.
     backend_kwargs : mapping, optional
@@ -83,7 +90,7 @@ def plot(
         If containers have incorrect types or backend options are reserved.
     ValueError
         If data or parameter labels are invalid, no parameters are shared, or
-        backend or inversion method is unknown.
+        backend, inversion method, or ``missing_params`` is unknown.
     KeyError
         If a requested parameter is unavailable in any forecast.
     numpy.linalg.LinAlgError
@@ -96,7 +103,11 @@ def plot(
         raise ValueError(f"Unknown plotting backend {backend!r}. Available: getdist.")
     implementation = _BACKENDS[backend]()
     names, labels, distributions = _prepare(
-        datasets, parameters, method, parameter_labels=parameter_labels
+        datasets,
+        parameters,
+        method,
+        parameter_labels=parameter_labels,
+        missing_params=missing_params,
     )
     return implementation(
         names,
