@@ -268,3 +268,33 @@ forecast is rejected; it is not recomputed.
 
 See [CHANGELOG.md](CHANGELOG.md) for release notes. `fimx` is released under
 the MIT license; see [LICENSE](LICENSE).
+
+### Correlation heatmaps
+
+Plot a stored covariance with Matplotlib using the `plotting` extra:
+
+```python
+from fimx import plot_correlation
+from fimx.io import load_dataset
+
+forecast = load_dataset("survey.nc")
+figure = plot_correlation(forecast, parameters=["a", "b"])
+figure.savefig("correlation.pdf")
+```
+
+`plot_correlation` requires a `covariance` variable with positive variances;
+Fisher matrices and fiducials are not required. It normalizes the stored
+covariance without inversion. Parameters follow file order unless explicitly
+selected and reordered. Omitted parameters are not conditioned upon. Dataset
+`labels` supply LaTeX labels without enclosing `$`; `parameter_labels` overrides
+them, and otherwise plain parameter names are used. The returned figure can be
+edited before saving. GetDist is not needed for heatmaps.
+
+With `fimx[cli,plotting]` installed, save one heatmap per command:
+
+```bash
+fimx plot-correlation --file survey.nc --figure-file correlation.pdf \
+  --parameters a --parameters b --figure-dpi 150
+```
+
+The default output is `correlation.pdf`. The CLI closes the figure after saving.
