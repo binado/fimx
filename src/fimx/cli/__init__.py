@@ -4,6 +4,7 @@ from collections.abc import Sequence
 
 import typer
 
+from .correlation import plot_correlation
 from .invert import invert
 from .plot import plot
 
@@ -13,6 +14,7 @@ app = typer.Typer(
     help="Construct, manipulate, and analyze dense Fisher matrices.",
 )
 app.command()(plot)
+app.command()(plot_correlation)
 app.command()(invert)
 
 

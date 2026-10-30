@@ -37,6 +37,7 @@ def test_public_api() -> None:
         "gaussian_prior",
         "dataset",
         "plot",
+        "plot_correlation",
     }
     assert not hasattr(fimx, "FisherMatrix")
 

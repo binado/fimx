@@ -13,7 +13,7 @@ from .ops import (
     symmetrize,
     transform,
 )
-from .plotting import plot
+from .plotting import plot, plot_correlation
 
 __all__ = [
     "combine",
@@ -28,6 +28,7 @@ __all__ = [
     "marginalize",
     "matrix",
     "plot",
+    "plot_correlation",
     "symmetrize",
     "transform",
     "vector",

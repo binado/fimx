@@ -9,6 +9,7 @@ import xarray as xr
 
 from ..inversion import InversionMethod
 from .base import MissingParams, PlotBackend, _prepare
+from .correlation import plot_correlation
 
 if TYPE_CHECKING:
     from matplotlib.figure import Figure
@@ -118,4 +119,4 @@ def plot(
     )
 
 
-__all__ = ["plot"]
+__all__ = ["plot", "plot_correlation"]
