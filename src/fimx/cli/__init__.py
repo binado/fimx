@@ -15,8 +15,12 @@ app = typer.Typer(
     no_args_is_help=True,
     help="Construct, manipulate, and analyze dense Fisher matrices.",
 )
-app.command()(plot)
-app.command()(plot_correlation)
+plot_app = typer.Typer(
+    no_args_is_help=True, help="Plot forecast constraints and correlations."
+)
+plot_app.command("corner")(plot)
+plot_app.command("matrix")(plot_correlation)
+app.add_typer(plot_app, name="plot")
 app.command()(invert)
 app.command()(fix)
 app.command()(marginalize)

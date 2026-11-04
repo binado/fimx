@@ -98,7 +98,8 @@ def test_cli(forecast: xr.Dataset, tmp_path: Path, output_option: str) -> None:
     result = CliRunner().invoke(
         app,
         [
-            "plot-correlation",
+            "plot",
+            "matrix",
             str(source),
             output_option,
             str(output),

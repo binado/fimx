@@ -222,7 +222,7 @@ def test_cli_inversion_method_pinv_saves_degenerate_figure(
     source = tmp_path / "survey.nc"
     degenerate_forecast.to_netcdf(source)
     figure_file = tmp_path / "out.png"
-    argv = ["plot", str(source), "--output-file", str(figure_file)]
+    argv = ["plot", "corner", str(source), "--output-file", str(figure_file)]
     argv += [
         "--parameters",
         "a",
@@ -238,7 +238,7 @@ def test_cli_inversion_method_pinv_saves_degenerate_figure(
 
 def test_cli_unknown_inversion_method_exits(tmp_path: Path) -> None:
     result = runner.invoke(
-        app, ["plot", str(tmp_path / "x.nc"), "--inversion-method", "lu"]
+        app, ["plot", "corner", str(tmp_path / "x.nc"), "--inversion-method", "lu"]
     )
     assert result.exit_code != 0
 
@@ -303,7 +303,7 @@ def test_cli_uses_dataset_labels(forecast: xr.Dataset, tmp_path: Path) -> None:
     _labeled(forecast, ["alpha", "beta", "gamma"]).to_netcdf(source)
     figure_file = tmp_path / "out.png"
     result = runner.invoke(
-        app, ["plot", str(source), "--output-file", str(figure_file)]
+        app, ["plot", "corner", str(source), "--output-file", str(figure_file)]
     )
     assert result.exit_code == 0
     assert figure_file.exists()
@@ -383,6 +383,7 @@ def test_cli_missing_params_fix(
 ) -> None:
     argv = [
         "plot",
+        "corner",
         "--output-file",
         str(tmp_path / "out.png"),
         "--missing-params",
@@ -410,7 +411,7 @@ def _write_pair(forecast: xr.Dataset, tmp_path: Path) -> list[str]:
 def test_cli_analysis_labels_allow_same_stems(
     forecast: xr.Dataset, tmp_path: Path, output_option: str
 ) -> None:
-    argv = ["plot", output_option, str(tmp_path / "out.png")]
+    argv = ["plot", "corner", output_option, str(tmp_path / "out.png")]
     argv += _write_pair(forecast, tmp_path)
     assert runner.invoke(app, argv).exit_code == 2
     argv += ["--analysis-label", "Planck", "--analysis-label", "Euclid"]
@@ -423,7 +424,7 @@ def test_cli_analysis_labels_allow_same_stems(
 def test_cli_invalid_analysis_labels_exit(
     forecast: xr.Dataset, tmp_path: Path, labels: list[str]
 ) -> None:
-    argv = ["plot", "--output-file", str(tmp_path / "out.png")]
+    argv = ["plot", "corner", "--output-file", str(tmp_path / "out.png")]
     argv += _write_pair(forecast, tmp_path)
     for label in labels:
         argv += ["--analysis-label", label]
