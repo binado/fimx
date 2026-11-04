@@ -187,14 +187,14 @@ NetCDF Datasets that contain `fisher` and `fiducials`:
 
 ```sh
 uv add 'fimx[cli,plotting]'
-fimx plot --file survey-a.nc --file survey-b.nc \
-    --figure-file constraints.png --figure-dpi 200 \
+fimx plot survey-a.nc survey-b.nc \
+    --output-file constraints.png --figure-dpi 200 \
     --parameters a --parameters b --no-filled --backend getdist \
     --backend-kwargs '{"contour_colors": ["C0", "C1"]}'
 ```
 
 Each file stem becomes a legend label, so stems must be unique. Pass
-`--analysis-label` once per `--file`, in the same order, to override the
+`--analysis-label` once per input file, in the same order, to override the
 labels (all or none); the final labels must be unique. The output
 defaults to `plot.png` at 150 dpi. `--parameters` selects and orders
 parameters. Axis labels come from an optional `labels` variable (see
@@ -205,14 +205,19 @@ line contours, `--inversion-method` picks `cholesky`, `inv`, or `pinv`,
 plotted in a file, logging each one to stderr, `--backend` picks a backend, and `--backend-kwargs` takes a JSON object.
 `fimx.io.load_dataset(path)` loads the same files from Python.
 
+All commands accept input files as positional arguments and use
+`-o/--output-file` for output paths. `plot` accepts multiple input files;
+the other commands accept one. Plotting commands have default output paths,
+while `invert` only writes a file when an output path is supplied.
+
 `fimx invert` needs only the `cli` extra. It reports matrix conditioning and
 inversion residuals from either a standalone matrix DataArray or a Dataset
 containing `fisher`; an existing `covariance` is ignored:
 
 ```sh
-fimx invert --file fisher.nc
-fimx invert --file forecast.nc --inversion-method inv --json
-fimx invert --file forecast.nc --save forecast-with-covariance.nc
+fimx invert fisher.nc
+fimx invert forecast.nc --inversion-method inv --json
+fimx invert forecast.nc --output-file forecast-with-covariance.nc
 ```
 
 The report evaluates one inversion method, `cholesky` by default, selectable
@@ -221,11 +226,26 @@ with `--inversion-method`. It reports the maximum absolute element of
 report also includes the condition number, numerical rank, eigenvalue range,
 and positive-definite status. The condition number is infinite unless the
 matrix is positive definite, and that non-finite value is JSON `null`.
-`--save PATH` writes the Dataset, with its
+`-o/--output-file PATH` writes the Dataset, with its
 `fiducials` and `labels`, plus a new `covariance` from the selected method; the
 method is reported on stderr and recorded in the covariance's `attrs` together
 with its condition number and residual. Nothing is written if the selected
 method fails.
+
+`fimx fix` and `fimx marginalize` take a forecast Dataset as a positional
+argument and remove the parameters named by repeatable `--parameters` options:
+
+```sh
+fimx fix forecast.nc --parameters a --parameters b -o fixed.nc
+fimx marginalize forecast.nc --parameters a --output-file marginalized.nc
+```
+
+`fix` holds the selected parameters constant; `marginalize` removes them
+through the Schur complement. Both require the `cli` extra and a new output
+path (`-o` or `--output-file`); existing files cannot be overwritten. Remaining
+parameters keep their original order, and metadata and other variables are
+preserved and subset along the parameter dimensions. Any stored `covariance`
+is dropped; regenerate it with `fimx invert` if needed.
 
 ## Storage
 
@@ -293,7 +313,7 @@ edited before saving. GetDist is not needed for heatmaps.
 With `fimx[cli,plotting]` installed, save one heatmap per command:
 
 ```bash
-fimx plot-correlation --file survey.nc --figure-file correlation.pdf \
+fimx plot-correlation survey.nc --output-file correlation.pdf \
   --parameters a --parameters b --figure-dpi 150
 ```
 

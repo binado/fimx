@@ -150,8 +150,7 @@ def _inversion_report(
 def invert(
     file: Annotated[
         Path,
-        typer.Option(
-            "--file",
+        typer.Argument(
             metavar="PATH",
             help="NetCDF file containing a Fisher matrix.",
         ),
@@ -160,13 +159,14 @@ def invert(
         InversionMethod,
         typer.Option(
             "--inversion-method",
-            help="Method used for the inversion report and --save.",
+            help="Method used for the inversion report and output covariance.",
         ),
     ] = "cholesky",
-    save: Annotated[
+    output_file: Annotated[
         Path | None,
         typer.Option(
-            "--save",
+            "--output-file",
+            "-o",
             metavar="PATH",
             help=(
                 "Write the Dataset with a new covariance to PATH, from the "
@@ -185,9 +185,9 @@ def invert(
         fisher = _load_matrix(dataset)
         inversion_report, covariance = _inversion_report(file, fisher, inversion_method)
         successful = inversion_report.success
-        saved = save is not None and covariance is not None
-        if save is not None and covariance is not None:
-            _save_covariance(save, dataset, fisher, covariance)
+        saved = output_file is not None and covariance is not None
+        if output_file is not None and covariance is not None:
+            _save_covariance(output_file, dataset, fisher, covariance)
     except (OSError, ValueError) as error:
         typer.echo(f"Error: {error}", err=True)
         raise typer.Exit(2) from error
@@ -197,6 +197,6 @@ def invert(
     else:
         typer.echo(inversion_report)
     if saved:
-        typer.echo(f"Saved {inversion_method} covariance to {save}", err=True)
+        typer.echo(f"Saved {inversion_method} covariance to {output_file}", err=True)
     if not successful:
         raise typer.Exit(1)
