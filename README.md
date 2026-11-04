@@ -227,6 +227,21 @@ method is reported on stderr and recorded in the covariance's `attrs` together
 with its condition number and residual. Nothing is written if the selected
 method fails.
 
+`fimx fix` and `fimx marginalize` take a forecast Dataset as a positional
+argument and remove the parameters named by repeatable `--parameters` options:
+
+```sh
+fimx fix forecast.nc --parameters a --parameters b -o fixed.nc
+fimx marginalize forecast.nc --parameters a --output-file marginalized.nc
+```
+
+`fix` holds the selected parameters constant; `marginalize` removes them
+through the Schur complement. Both require the `cli` extra and a new output
+path (`-o` or `--output-file`); existing files cannot be overwritten. Remaining
+parameters keep their original order, and metadata and other variables are
+preserved and subset along the parameter dimensions. Any stored `covariance`
+is dropped; regenerate it with `fimx invert` if needed.
+
 ## Storage
 
 Matrices are plain xarray objects, so any xarray writer works. The `io` extra

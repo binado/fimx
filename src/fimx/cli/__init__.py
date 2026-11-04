@@ -5,7 +5,9 @@ from collections.abc import Sequence
 import typer
 
 from .correlation import plot_correlation
+from .fix import fix
 from .invert import invert
+from .marginalize import marginalize
 from .plot import plot
 
 app = typer.Typer(
@@ -16,6 +18,8 @@ app = typer.Typer(
 app.command()(plot)
 app.command()(plot_correlation)
 app.command()(invert)
+app.command()(fix)
+app.command()(marginalize)
 
 
 def main(argv: Sequence[str] | None = None) -> None:
