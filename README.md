@@ -182,12 +182,12 @@ fig = plot(
 ### Command line
 
 The `cli` extra provides the `fimx` command and includes the NetCDF backend.
-`fimx plot` also needs the `plotting` extra. It draws a corner plot from
+`fimx plot corner` also needs the `plotting` extra. It draws a corner plot from
 NetCDF Datasets that contain `fisher` and `fiducials`:
 
 ```sh
 uv add 'fimx[cli,plotting]'
-fimx plot survey-a.nc survey-b.nc \
+fimx plot corner survey-a.nc survey-b.nc \
     --output-file constraints.png --figure-dpi 200 \
     --parameters a --parameters b --no-filled --backend getdist \
     --backend-kwargs '{"contour_colors": ["C0", "C1"]}'
@@ -206,7 +206,7 @@ plotted in a file, logging each one to stderr, `--backend` picks a backend, and 
 `fimx.io.load_dataset(path)` loads the same files from Python.
 
 All commands accept input files as positional arguments and use
-`-o/--output-file` for output paths. `plot` accepts multiple input files;
+`-o/--output-file` for output paths. `plot corner` accepts multiple input files;
 the other commands accept one. Plotting commands have default output paths,
 while `invert` only writes a file when an output path is supplied.
 
@@ -259,7 +259,7 @@ C_restored = inv(restored)
 ```
 
 For forecasts, `fimx.io.save_dataset` writes the Dataset convention read by
-`plot`, `fimx plot` and `fimx invert`; `fimx.io.load_dataset` reads it back.
+`plot`, `fimx plot corner` and `fimx invert`; `fimx.io.load_dataset` reads it back.
 
 ```python
 from fimx.io import load_dataset, save_dataset
@@ -313,7 +313,7 @@ edited before saving. GetDist is not needed for heatmaps.
 With `fimx[cli,plotting]` installed, save one heatmap per command:
 
 ```bash
-fimx plot-correlation survey.nc --output-file correlation.pdf \
+fimx plot matrix survey.nc --output-file correlation.pdf \
   --parameters a --parameters b --figure-dpi 150
 ```
 

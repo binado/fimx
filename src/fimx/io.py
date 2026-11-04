@@ -90,7 +90,7 @@ def save_dataset(
     Notes
     -----
     The file can be read with :func:`load_dataset` and passed to
-    :func:`fimx.plot`, and is the input of the ``fimx plot`` and
+    :func:`fimx.plot`, and is the input of the ``fimx plot corner`` and
     ``fimx invert`` commands.
     """
     validated, _ = _validate_matrix(fisher)
