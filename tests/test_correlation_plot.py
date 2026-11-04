@@ -90,7 +90,8 @@ def test_missing_data_and_labels(forecast: xr.Dataset) -> None:
         plot_correlation(forecast)
 
 
-def test_cli(forecast: xr.Dataset, tmp_path: Path) -> None:
+@pytest.mark.parametrize("output_option", ["-o", "--output-file"])
+def test_cli(forecast: xr.Dataset, tmp_path: Path, output_option: str) -> None:
     source = tmp_path / "forecast.nc"
     output = tmp_path / "correlation.pdf"
     forecast.to_netcdf(source, engine="h5netcdf")
@@ -98,9 +99,8 @@ def test_cli(forecast: xr.Dataset, tmp_path: Path) -> None:
         app,
         [
             "plot-correlation",
-            "--file",
             str(source),
-            "--figure-file",
+            output_option,
             str(output),
             "--parameters",
             "b",

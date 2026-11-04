@@ -10,11 +10,9 @@ from ..plotting import plot_correlation as plot_forecast_correlation
 
 
 def plot_correlation(
-    file: Annotated[
-        Path, typer.Option("--file", help="NetCDF Dataset with covariance.")
-    ],
-    figure_file: Annotated[
-        Path, typer.Option("--figure-file", help="Output figure path.")
+    file: Annotated[Path, typer.Argument(help="NetCDF Dataset with covariance.")],
+    output_file: Annotated[
+        Path, typer.Option("--output-file", "-o", help="Output figure path.")
     ] = Path("correlation.pdf"),
     figure_dpi: Annotated[
         int, typer.Option("--figure-dpi", help="Output resolution.")
@@ -29,6 +27,6 @@ def plot_correlation(
     import matplotlib.pyplot as plt
 
     try:
-        figure.savefig(figure_file, dpi=figure_dpi, bbox_inches="tight")
+        figure.savefig(output_file, dpi=figure_dpi, bbox_inches="tight")
     finally:
         plt.close(figure)

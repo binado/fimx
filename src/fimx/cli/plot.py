@@ -28,16 +28,16 @@ def _json_object(value: str) -> dict[str, Any]:
 def plot(
     files: Annotated[
         list[Path],
-        typer.Option(
-            "--file",
+        typer.Argument(
             metavar="PATH",
-            help="NetCDF Dataset to plot; repeat to overlay multiple forecasts.",
+            help="NetCDF Datasets to overlay, in order.",
         ),
     ],
-    figure_file: Annotated[
+    output_file: Annotated[
         Path,
         typer.Option(
-            "--figure-file",
+            "--output-file",
+            "-o",
             metavar="PATH",
             help="Output figure path.",
         ),
@@ -94,7 +94,7 @@ def plot(
         typer.Option(
             "--analysis-label",
             metavar="LABEL",
-            help="Legend label for each --file, in the same order; repeat once "
+            help="Legend label for each input file, in the same order; repeat once "
             "per file. Defaults to the file stems.",
         ),
     ] = None,
@@ -103,7 +103,7 @@ def plot(
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     if analysis_labels is not None and len(analysis_labels) != len(files):
         typer.echo(
-            f"Error: Expected one --analysis-label per --file ({len(files)}), "
+            f"Error: Expected one --analysis-label per input file ({len(files)}), "
             f"got {len(analysis_labels)}.",
             err=True,
         )
@@ -128,4 +128,4 @@ def plot(
         backend=backend,
         backend_kwargs=backend_kwargs,
     )
-    figure.savefig(figure_file, dpi=figure_dpi)
+    figure.savefig(output_file, dpi=figure_dpi)

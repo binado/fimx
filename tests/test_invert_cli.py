@@ -5,6 +5,7 @@ import sys
 from pathlib import Path
 
 import numpy as np
+import pytest
 import xarray as xr
 from typer.testing import CliRunner
 
@@ -20,7 +21,7 @@ def test_invert_default_cholesky_and_text_output(tmp_path: Path) -> None:
     path = tmp_path / "fisher.nc"
     F.to_netcdf(path, engine="h5netcdf")
 
-    result = runner.invoke(app, ["invert", "--file", str(path)])
+    result = runner.invoke(app, ["invert", str(path)])
 
     assert result.exit_code == 0
     output = result.stdout
@@ -39,7 +40,7 @@ def test_invert_dataset_json_and_selected_method(tmp_path: Path) -> None:
     )
 
     result = runner.invoke(
-        app, ["invert", "--file", str(path), "--inversion-method", "inv", "--json"]
+        app, ["invert", str(path), "--inversion-method", "inv", "--json"]
     )
 
     assert result.exit_code == 0
@@ -60,7 +61,7 @@ def test_invert_selected_pinv_succeeds_on_singular_matrix(tmp_path: Path) -> Non
 
     result = runner.invoke(
         app,
-        ["invert", "--file", str(path), "--inversion-method", "pinv", "--json"],
+        ["invert", str(path), "--inversion-method", "pinv", "--json"],
     )
 
     assert result.exit_code == 0
@@ -78,7 +79,7 @@ def test_invert_method_failure_returns_nonzero(tmp_path: Path) -> None:
 
     result = runner.invoke(
         app,
-        ["invert", "--file", str(path), "--inversion-method", "cholesky", "--json"],
+        ["invert", str(path), "--inversion-method", "cholesky", "--json"],
     )
 
     assert result.exit_code == 1
@@ -94,9 +95,7 @@ def test_invert_unknown_method_exits(tmp_path: Path) -> None:
     path = tmp_path / "fisher.nc"
     F.to_netcdf(path, engine="h5netcdf")
 
-    result = runner.invoke(
-        app, ["invert", "--file", str(path), "--inversion-method", "bogus"]
-    )
+    result = runner.invoke(app, ["invert", str(path), "--inversion-method", "bogus"])
 
     assert result.exit_code != 0
 
@@ -106,7 +105,7 @@ def test_invert_nonfinite_condition_number_is_json_null(tmp_path: Path) -> None:
     path = tmp_path / "zero.nc"
     F.to_netcdf(path, engine="h5netcdf")
 
-    result = runner.invoke(app, ["invert", "--file", str(path), "--json"])
+    result = runner.invoke(app, ["invert", str(path), "--json"])
 
     assert result.exit_code == 1
     report = json.loads(result.stdout)
@@ -120,11 +119,14 @@ def _forecast(tmp_path: Path) -> tuple[Path, xr.DataArray]:
     return path, F
 
 
-def test_save_writes_covariance_and_keeps_other_variables(tmp_path: Path) -> None:
+@pytest.mark.parametrize("output_option", ["-o", "--output-file"])
+def test_save_writes_covariance_and_keeps_other_variables(
+    tmp_path: Path, output_option: str
+) -> None:
     path, F = _forecast(tmp_path)
     out = tmp_path / "with_covariance.nc"
 
-    result = runner.invoke(app, ["invert", "--file", str(path), "--save", str(out)])
+    result = runner.invoke(app, ["invert", str(path), output_option, str(out)])
 
     assert result.exit_code == 0
     saved = load_dataset(out)
@@ -140,7 +142,7 @@ def test_save_replaces_existing_covariance(tmp_path: Path) -> None:
     save_dataset(path, F, covariance=inv(F, method="inv"))
     out = tmp_path / "out.nc"
 
-    result = runner.invoke(app, ["invert", "--file", str(path), "--save", str(out)])
+    result = runner.invoke(app, ["invert", str(path), "--output-file", str(out)])
 
     assert result.exit_code == 0
     np.testing.assert_allclose(load_dataset(out)["covariance"].values, inv(F).values)
@@ -156,11 +158,10 @@ def test_save_uses_selected_pinv_on_singular_matrix(tmp_path: Path) -> None:
         app,
         [
             "invert",
-            "--file",
             str(path),
             "--inversion-method",
             "pinv",
-            "--save",
+            "--output-file",
             str(out),
         ],
     )
@@ -181,11 +182,10 @@ def test_save_is_skipped_if_method_fails(tmp_path: Path) -> None:
         app,
         [
             "invert",
-            "--file",
             str(path),
             "--inversion-method",
             "cholesky",
-            "--save",
+            "--output-file",
             str(out),
         ],
     )
@@ -199,7 +199,7 @@ def test_save_works_with_json_output(tmp_path: Path) -> None:
     out = tmp_path / "out.nc"
 
     result = runner.invoke(
-        app, ["invert", "--file", str(path), "--json", "--save", str(out)]
+        app, ["invert", str(path), "--json", "--output-file", str(out)]
     )
 
     assert result.exit_code == 0
