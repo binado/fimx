@@ -6,9 +6,9 @@ handles labels, metadata containers, and persistence.
 
 ```sh
 uv add fimx
-# Optional NetCDF backend:
+# Optional HDF5 (NetCDF4) backend:
 uv add 'fimx[io]'
-# Optional command-line interface (includes the NetCDF backend):
+# Optional command-line interface (includes the HDF5 backend):
 uv add 'fimx[cli]'
 # Optional Gaussian plotting backend:
 uv add 'fimx[plotting]'
@@ -181,9 +181,10 @@ fig = plot(
 
 ### Command line
 
-The `cli` extra provides the `fimx` command and includes the NetCDF backend.
+The `cli` extra provides the `fimx` command and includes the HDF5 backend.
 `fimx plot corner` also needs the `plotting` extra. It draws a corner plot from
-NetCDF Datasets that contain `fisher` and `fiducials`:
+HDF5 (NetCDF4) Datasets that contain `fisher` and `fiducials`. Files are
+plain HDF5 and the extension is free (`.nc`, `.h5`, `.hdf5`):
 
 ```sh
 uv add 'fimx[cli,plotting]'

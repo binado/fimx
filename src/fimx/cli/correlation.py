@@ -10,7 +10,7 @@ from ..plotting import plot_correlation as plot_forecast_correlation
 
 
 def plot_correlation(
-    file: Annotated[Path, typer.Argument(help="NetCDF Dataset with covariance.")],
+    file: Annotated[Path, typer.Argument(help="HDF5/NetCDF4 Dataset with covariance.")],
     output_file: Annotated[
         Path, typer.Option("--output-file", "-o", help="Output figure path.")
     ] = Path("correlation.pdf"),
