@@ -7,6 +7,26 @@ change before 1.0.
 
 ## [Unreleased]
 
+## [0.5.0]
+
+### Added
+
+- `plot_correlation()` rendering a parameter correlation heatmap from a stored
+  forecast covariance, with optional parameter selection and display labels.
+- `fimx plot matrix` command writing the correlation heatmap to a figure file.
+- `fimx fix` and `fimx marginalize` commands writing a reduced forecast with
+  the selected parameters removed to a new NetCDF file.
+
+### Changed
+
+- `fimx plot` is a command group: corner plots moved to `fimx plot corner`
+  and correlation heatmaps live at `fimx plot matrix`.
+- CLI dataset inputs are positional file arguments instead of repeatable
+  `--file` options; `fimx plot corner` accepts multiple positional files to
+  overlay.
+- `fimx invert --save` and `fimx plot --figure-file` are replaced by
+  `--output-file` (`-o`).
+
 ## [0.4.0]
 
 ### Added
@@ -95,7 +115,8 @@ change before 1.0.
 - `fimx-plot` command-line tool and `fimx.io.load_dataset` for NetCDF files.
 - Optional `io` and `plotting` extras, and a `py.typed` marker.
 
-[Unreleased]: https://github.com/binado/fimx/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/binado/fimx/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/binado/fimx/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/binado/fimx/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/binado/fimx/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/binado/fimx/compare/v0.1.0...v0.2.0
