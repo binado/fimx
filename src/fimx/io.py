@@ -1,4 +1,4 @@
-"""NetCDF loading and saving of forecast Datasets."""
+"""HDF5 (NetCDF4) loading and saving of forecast Datasets."""
 
 from collections.abc import Hashable, Sequence
 from os import PathLike
@@ -16,12 +16,13 @@ _COVARIANCE_RTOL = 1e-3
 
 
 def load_dataset(path: str | PathLike[str]) -> xr.Dataset:
-    """Load a NetCDF Dataset using the optional h5netcdf engine.
+    """Load an HDF5 (NetCDF4) Dataset using the optional h5netcdf engine.
 
     Parameters
     ----------
     path : str or os.PathLike
-        Path to a NetCDF file.
+        Path to an HDF5 file in the NetCDF4 convention. The extension is
+        not checked, so ``.nc``, ``.h5`` and ``.hdf5`` all work.
 
     Returns
     -------
@@ -59,12 +60,13 @@ def save_dataset(
     fiducials: ArrayLike | xr.DataArray | None = None,
     labels: Sequence[str] | None = None,
 ) -> None:
-    """Save a forecast as a NetCDF Dataset in the canonical schema.
+    """Save a forecast as an HDF5 (NetCDF4) Dataset in the canonical schema.
 
     Parameters
     ----------
     path : str or os.PathLike
-        Output path. The optional h5netcdf engine is used.
+        Output path. The optional h5netcdf engine is used, and the extension
+        is free: ``.nc``, ``.h5`` and ``.hdf5`` write the same file.
     fisher : xarray.DataArray
         Canonical Fisher matrix, stored as ``fisher``.
     covariance : xarray.DataArray, optional

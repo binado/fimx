@@ -94,3 +94,14 @@ def test_invalid_fisher_raises(tmp_path: Path) -> None:
 def test_labels_with_dollar_signs_raise(F: xr.DataArray, tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="must not include"):
         save_dataset(tmp_path / "forecast.nc", F, labels=["$a$", "$b$", "$c$"])
+
+
+@pytest.mark.parametrize("suffix", [".nc", ".h5", ".hdf5"])
+def test_extension_does_not_change_the_format(
+    F: xr.DataArray, tmp_path: Path, suffix: str
+) -> None:
+    path = tmp_path / f"forecast{suffix}"
+    save_dataset(path, F, fiducials=[1.0, 2.0, 3.0])
+    loaded = load_dataset(path)
+    np.testing.assert_allclose(loaded["fisher"].values, F.values)
+    np.testing.assert_allclose(loaded["fiducials"].values, [1.0, 2.0, 3.0])

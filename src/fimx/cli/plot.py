@@ -30,7 +30,7 @@ def plot(
         list[Path],
         typer.Argument(
             metavar="PATH",
-            help="NetCDF Datasets to overlay, in order.",
+            help="HDF5/NetCDF4 Datasets to overlay, in order.",
         ),
     ],
     output_file: Annotated[

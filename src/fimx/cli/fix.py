@@ -11,14 +11,14 @@ from ._reduce import _reduce_dataset
 
 def fix(
     file: Annotated[
-        Path, typer.Argument(help="NetCDF Dataset containing a Fisher matrix.")
+        Path, typer.Argument(help="HDF5/NetCDF4 Dataset containing a Fisher matrix.")
     ],
     parameters: Annotated[
         list[str],
         typer.Option("--parameters", help="Parameter to fix and remove; repeat."),
     ],
     output_file: Annotated[
-        Path, typer.Option("--output-file", "-o", help="New output NetCDF file.")
+        Path, typer.Option("--output-file", "-o", help="New output HDF5/NetCDF4 file.")
     ],
 ) -> None:
     """Remove selected parameters while holding them fixed.

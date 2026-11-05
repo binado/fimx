@@ -152,7 +152,7 @@ def invert(
         Path,
         typer.Argument(
             metavar="PATH",
-            help="NetCDF file containing a Fisher matrix.",
+            help="HDF5/NetCDF4 file containing a Fisher matrix.",
         ),
     ],
     inversion_method: Annotated[
