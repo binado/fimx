@@ -26,7 +26,8 @@ dependencies = [
 [project.optional-dependencies]
 io = ["h5netcdf[h5py]"]
 plotting = ["getdist", "matplotlib"]
-cli = ["typer>=0.27.2", "fimx[io]"]
+tables = ["jinja2"]
+cli = ["typer>=0.27.2", "fimx[io,tables]"]
 
 [project.urls]
 Homepage = "https://github.com/binado/fimx"
@@ -46,6 +47,7 @@ dev = [
     "getdist>=1.7.7",
     "h5netcdf[h5py]",
     "ipykernel>=7.1.0",
+    "jinja2",
     "matplotlib>=3.10.8",
     "prek>=0.5.3",
     "pytest>=9.0.2",

@@ -14,6 +14,7 @@ from .ops import (
     transform,
 )
 from .plotting import plot, plot_correlation
+from .tables import latex_table
 
 __all__ = [
     "combine",
@@ -25,6 +26,7 @@ __all__ = [
     "fom",
     "gaussian_prior",
     "inv",
+    "latex_table",
     "marginalize",
     "matrix",
     "plot",

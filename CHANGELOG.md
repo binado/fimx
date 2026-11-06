@@ -7,6 +7,13 @@ change before 1.0.
 
 ## [Unreleased]
 
+### Added
+
+- `latex_table()` and `fimx table` building a LaTeX table of marginalized
+  errors from a stored forecast covariance, with configurable significant
+  digits, parameter selection, display labels, and optional fiducials.
+- `tables` extra providing Jinja2 for LaTeX output; the `cli` extra includes it.
+
 ## [0.5.0]
 
 ### Added

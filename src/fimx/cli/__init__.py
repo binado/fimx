@@ -9,6 +9,7 @@ from .fix import fix
 from .invert import invert
 from .marginalize import marginalize
 from .plot import plot
+from .table import table
 
 app = typer.Typer(
     add_completion=False,
@@ -24,6 +25,7 @@ app.add_typer(plot_app, name="plot")
 app.command()(invert)
 app.command()(fix)
 app.command()(marginalize)
+app.command()(table)
 
 
 def main(argv: Sequence[str] | None = None) -> None:

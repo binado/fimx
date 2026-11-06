@@ -8,8 +8,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 import xarray as xr
 
-from ..arrays import _labels, _plot_labels, _validate_matrix
-from ..inversion import _eigenvalues, _positive_semidefinite
+from ..datasets import _display_labels, _stored_covariance
 
 if TYPE_CHECKING:
     from matplotlib.figure import Figure
@@ -55,35 +54,8 @@ def plot_correlation(
     ImportError
         If Matplotlib is unavailable; install ``fimx[plotting]``.
     """
-    if not isinstance(forecast, xr.Dataset):
-        raise TypeError("Plot inputs must be xarray.Dataset objects.")
-    if "covariance" not in forecast.data_vars:
-        raise ValueError("Dataset must contain a 'covariance' variable.")
-    covariance, names = _validate_matrix(forecast["covariance"])
-    if not _positive_semidefinite(_eigenvalues(covariance)):
-        raise np.linalg.LinAlgError(
-            "Correlation requires a positive semidefinite covariance."
-        )
-    if not np.all(np.diag(covariance.values) > 0):
-        raise np.linalg.LinAlgError("Correlation requires positive variances.")
-    selected = names if parameters is None else _labels(parameters, name="parameters")
-    for name in selected:
-        if name not in names:
-            raise KeyError(name)
-    display: dict[str, str] = {}
-    if "labels" in forecast.data_vars:
-        labels = forecast["labels"]
-        if labels.dims != ("row",):
-            raise ValueError("Plot label dimensions must be exactly ('row',).")
-        display.update(zip(names, _plot_labels(labels.values.tolist()), strict=True))
-    if parameter_labels is not None:
-        if not isinstance(parameter_labels, Mapping):
-            raise TypeError("Parameter labels must be a mapping of names to strings.")
-        if any(not isinstance(name, str) for name in parameter_labels):
-            raise ValueError("Parameter label keys must be strings.")
-        _plot_labels(list(parameter_labels.values()))
-        display.update(parameter_labels)
-    _plot_labels([display.get(name, name) for name in selected])
+    covariance, names, selected = _stored_covariance(forecast, parameters)
+    display = _display_labels(forecast, names, selected, parameter_labels)
     ticks_labels = [
         f"${display[name]}$" if name in display else name for name in selected
     ]

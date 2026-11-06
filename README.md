@@ -12,6 +12,8 @@ uv add 'fimx[io]'
 uv add 'fimx[cli]'
 # Optional Gaussian plotting backend:
 uv add 'fimx[plotting]'
+# Optional LaTeX tables (Jinja2, used by pandas):
+uv add 'fimx[tables]'
 ```
 
 ## Quickstart
@@ -319,3 +321,30 @@ fimx plot matrix survey.nc --output-file correlation.pdf \
 ```
 
 The default output is `correlation.pdf`. The CLI closes the figure after saving.
+
+### LaTeX tables of marginalized errors
+
+With the `tables` extra, turn the diagonal of a stored covariance into a LaTeX
+table of `σ = sqrt(C_ii)`:
+
+```python
+from fimx import latex_table
+from fimx.io import load_dataset
+
+forecast = load_dataset("survey.nc")
+print(latex_table(forecast, significant_digits=3, fiducials=True))
+```
+
+`latex_table` validates the covariance like `plot_correlation` and accepts the
+same `parameters` and `parameter_labels`. `significant_digits` (default 2)
+keeps trailing zeros (`0.10`) and writes exponents as `$1.2\times10^{-4}$`.
+`fiducials=True` adds a `Fiducial` column and requires a `fiducials` variable.
+
+With the `cli` extra (which includes `tables`), print the table or save it:
+
+```bash
+fimx table survey.nc --significant-digits 3 --fiducials \
+  --parameters a --parameters b -o table.tex
+```
+
+Without `-o`, the table goes to stdout.
