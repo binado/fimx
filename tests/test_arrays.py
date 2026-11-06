@@ -28,6 +28,7 @@ def test_public_api() -> None:
         "marginalize",
         "inv",
         "errors",
+        "latex_table",
         "expand",
         "transform",
         "combine",

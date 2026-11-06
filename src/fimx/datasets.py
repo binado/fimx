@@ -1,12 +1,13 @@
 """Construction of labeled Fisher matrix Datasets with parameter metadata."""
 
-from collections.abc import Hashable, Mapping
+from collections.abc import Hashable, Mapping, Sequence
 
 import numpy as np
 import xarray as xr
 from numpy.typing import ArrayLike
 
-from .arrays import _validate_matrix, matrix, vector
+from .arrays import _labels, _plot_labels, _validate_matrix, matrix, vector
+from .inversion import _eigenvalues, _positive_semidefinite
 
 
 def dataset(
@@ -76,3 +77,57 @@ def dataset(
             variable = canonical
         variables[name] = variable
     return xr.Dataset(variables).copy(deep=True)
+
+
+def _stored_covariance(
+    forecast: xr.Dataset, parameters: Sequence[str] | None
+) -> tuple[xr.DataArray, list[str], list[str]]:
+    """Validate a Dataset's stored covariance and select parameters.
+
+    Returns the validated covariance, its parameter names, and the selected
+    names in display order. Raises ``TypeError``, ``ValueError``, ``KeyError``
+    or ``numpy.linalg.LinAlgError`` for invalid input.
+    """
+    if not isinstance(forecast, xr.Dataset):
+        raise TypeError("Plot inputs must be xarray.Dataset objects.")
+    if "covariance" not in forecast.data_vars:
+        raise ValueError("Dataset must contain a 'covariance' variable.")
+    covariance, names = _validate_matrix(forecast["covariance"])
+    if not _positive_semidefinite(_eigenvalues(covariance)):
+        raise np.linalg.LinAlgError(
+            "Correlation requires a positive semidefinite covariance."
+        )
+    if not np.all(np.diag(covariance.values) > 0):
+        raise np.linalg.LinAlgError("Correlation requires positive variances.")
+    selected = names if parameters is None else _labels(parameters, name="parameters")
+    for name in selected:
+        if name not in names:
+            raise KeyError(name)
+    return covariance, names, selected
+
+
+def _display_labels(
+    forecast: xr.Dataset,
+    names: Sequence[str],
+    selected: Sequence[str],
+    parameter_labels: Mapping[str, str] | None,
+) -> dict[str, str]:
+    """Resolve LaTeX display labels from Dataset ``labels`` and overrides.
+
+    Parameters without a label are absent from the result.
+    """
+    display: dict[str, str] = {}
+    if "labels" in forecast.data_vars:
+        labels = forecast["labels"]
+        if labels.dims != ("row",):
+            raise ValueError("Plot label dimensions must be exactly ('row',).")
+        display.update(zip(names, _plot_labels(labels.values.tolist()), strict=True))
+    if parameter_labels is not None:
+        if not isinstance(parameter_labels, Mapping):
+            raise TypeError("Parameter labels must be a mapping of names to strings.")
+        if any(not isinstance(name, str) for name in parameter_labels):
+            raise ValueError("Parameter label keys must be strings.")
+        _plot_labels(list(parameter_labels.values()))
+        display.update(parameter_labels)
+    _plot_labels([display.get(name, name) for name in selected])
+    return display
