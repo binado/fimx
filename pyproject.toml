@@ -1,6 +1,6 @@
 [project]
 name = "fimx"
-version = "0.5.0"
+version = "0.6.0"
 description = "Dense Fisher matrix functions on labeled xarray arrays"
 readme = "README.md"
 license = "MIT"
